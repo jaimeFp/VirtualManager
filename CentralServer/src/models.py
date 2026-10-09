@@ -11,7 +11,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from database import Base
+from .database import Base
 
 
 def utc_now() -> datetime:
