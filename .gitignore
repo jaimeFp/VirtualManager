@@ -6,4 +6,4 @@ __pycache__/
 AgentManager/logs/
 AgentManager/config/agent.json
 
-CentralServer/certs/server.key
+*/certs/*
