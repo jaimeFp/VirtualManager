@@ -1,14 +1,19 @@
-```powershell
 $ErrorActionPreference = "Stop"
 
-$ProjectRoot = Split-Path -Parent $PSScriptRoot
-$AgentDir = Join-Path $ProjectRoot "AgentManager"
+# Script location:
+# AgentManager/scripts/utils/start-agent-dev.ps1
+#
+# Move two directories up to reach AgentManager.
+$AgentDir = Split-Path -Parent (
+    Split-Path -Parent $PSScriptRoot
+)
 
 $EnvFile = Join-Path $AgentDir "dev.env"
 $AgentScript = Join-Path $AgentDir "src\agent.py"
 $Certificate = Join-Path $AgentDir "certs\server.crt"
 
 Write-Host "[VirtualManager] Starting Agent..."
+Write-Host "[VirtualManager] Agent directory: $AgentDir"
 
 if (-not (Test-Path $EnvFile)) {
     Write-Error "Development environment file not found: $EnvFile"
@@ -49,7 +54,7 @@ if (-not $env:VIRTUALMANAGER_AGENT_TOKEN) {
 
 Set-Location $AgentDir
 
-Write-Host "[VirtualManager] Agent directory: $AgentDir"
+Write-Host "[VirtualManager] Environment loaded."
+Write-Host "[VirtualManager] Starting AgentManager..."
 
 python .\src\agent.py
-```

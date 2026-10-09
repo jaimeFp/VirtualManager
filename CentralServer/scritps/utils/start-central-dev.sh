@@ -1,10 +1,15 @@
-```bash
 #!/usr/bin/env bash
 
 set -e
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CENTRAL_DIR="$PROJECT_ROOT/CentralServer"
+# Script location:
+# CentralServer/scritps/utils/start-central-dev.sh
+#
+# Move two directories up to reach CentralServer.
+CENTRAL_DIR="$(
+    cd "$(dirname "${BASH_SOURCE[0]}")/../.." \
+    && pwd
+)"
 
 ENV_FILE="$CENTRAL_DIR/dev.env"
 VENV_DIR="$CENTRAL_DIR/.venv"
@@ -15,6 +20,7 @@ HOST="0.0.0.0"
 PORT="8443"
 
 echo "[VirtualManager] Starting Central Server..."
+echo "[VirtualManager] Central Server directory: $CENTRAL_DIR"
 
 if [ ! -f "$ENV_FILE" ]; then
     echo "ERROR: Development environment file not found:"
@@ -58,6 +64,7 @@ source "$VENV_DIR/bin/activate"
 
 cd "$CENTRAL_DIR"
 
+echo "[VirtualManager] Environment loaded."
 echo "[VirtualManager] Central Server ready."
 echo "[VirtualManager] Swagger: https://localhost:$PORT/docs"
 
@@ -67,4 +74,3 @@ exec python -m uvicorn src.main:app \
     --ssl-keyfile "$KEY_FILE" \
     --ssl-certfile "$CERT_FILE" \
     --reload
-```
