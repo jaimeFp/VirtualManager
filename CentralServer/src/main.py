@@ -4,11 +4,25 @@ import uuid
 
 from datetime import datetime, timezone
 from typing import Any
-from pydantic import BaseModel
-from fastapi import Depends, FastAPI, Header, HTTPException
 
-app = FastAPI(title="VirtualManager Central Server",version="0.1.0",)
+from fastapi import (
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+)
 
+from database import Base, engine
+import models
+
+
+Base.metadata.create_all(bind=engine)
+
+
+app = FastAPI(
+    title="VirtualManager Central Server",
+    version="0.1.0",
+)
 AGENT_TOKEN = os.environ.get("VIRTUALMANAGER_AGENT_TOKEN")
 
 if not AGENT_TOKEN:
