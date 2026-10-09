@@ -1,3 +1,4 @@
+```bash
 #!/usr/bin/env bash
 
 set -e
@@ -21,10 +22,6 @@ if [ ! -f "$ENV_FILE" ]; then
     exit 1
 fi
 
-set -a
-source "$ENV_FILE"
-set +a
-
 if [ ! -d "$VENV_DIR" ]; then
     echo "ERROR: Python virtual environment not found:"
     echo "  $VENV_DIR"
@@ -43,9 +40,26 @@ if [ ! -f "$KEY_FILE" ]; then
     exit 1
 fi
 
+set -a
+source "$ENV_FILE"
+set +a
+
+if [ -z "$VIRTUALMANAGER_AGENT_TOKEN" ]; then
+    echo "ERROR: VIRTUALMANAGER_AGENT_TOKEN is not defined."
+    exit 1
+fi
+
+if [ -z "$VIRTUALMANAGER_DATABASE_URL" ]; then
+    echo "ERROR: VIRTUALMANAGER_DATABASE_URL is not defined."
+    exit 1
+fi
+
 source "$VENV_DIR/bin/activate"
 
 cd "$CENTRAL_DIR"
+
+echo "[VirtualManager] Central Server ready."
+echo "[VirtualManager] Swagger: https://localhost:$PORT/docs"
 
 exec python -m uvicorn src.main:app \
     --host "$HOST" \
@@ -53,3 +67,4 @@ exec python -m uvicorn src.main:app \
     --ssl-keyfile "$KEY_FILE" \
     --ssl-certfile "$CERT_FILE" \
     --reload
+```
