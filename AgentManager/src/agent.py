@@ -16,7 +16,7 @@ from virtualbox import (
 )
 
 
-SERVER_URL = "https://localhost:8443"
+SERVER_URL = "https://192.168.56.101:8443"
 AGENT_VERSION = "0.1.0"
 POLL_INTERVAL = 5
 
