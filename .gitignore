@@ -7,3 +7,5 @@ AgentManager/logs/
 AgentManager/config/agent.json
 
 */certs/*
+*.env
+dev.env
