@@ -79,6 +79,20 @@ class Agent(Base):
     )
 
 
+class AgentCredential(Base):
+    """Hashed API credential belonging to a single agent."""
+
+    __tablename__ = "agent_credentials"
+
+    agent_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
 class VirtualMachine(Base):
     """!
     @brief Virtual machine database model.

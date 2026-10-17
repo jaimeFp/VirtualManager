@@ -47,8 +47,8 @@ Get-Content $EnvFile | ForEach-Object {
     }
 }
 
-if (-not $env:VIRTUALMANAGER_AGENT_TOKEN) {
-    Write-Error "VIRTUALMANAGER_AGENT_TOKEN is not defined."
+if (-not $env:VIRTUALMANAGER_ENROLLMENT_TOKEN) {
+    Write-Error "VIRTUALMANAGER_ENROLLMENT_TOKEN is not defined."
     exit 1
 }
 

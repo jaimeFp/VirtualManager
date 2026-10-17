@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from commands import execute_command
-from config import get_agent_id
+from config import get_agent_id, get_agent_token, save_agent_token
 from logging_config import configure_logging
 from server_client import ServerClient
 from virtualbox import (
@@ -20,7 +20,7 @@ SERVER_URL = os.environ.get("VIRTUALMANAGER_SERVER_URL", "https://192.168.56.101
 AGENT_VERSION = "0.1.0"
 POLL_INTERVAL = 5
 
-AGENT_TOKEN = os.environ.get("VIRTUALMANAGER_AGENT_TOKEN")
+ENROLLMENT_TOKEN = os.environ.get("VIRTUALMANAGER_ENROLLMENT_TOKEN")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -31,9 +31,11 @@ CA_CERTIFICATE = (
 )
 
 
-if not AGENT_TOKEN:
+SAVED_AGENT_TOKEN = get_agent_token()
+
+if not SAVED_AGENT_TOKEN and not ENROLLMENT_TOKEN:
     raise RuntimeError(
-        "VIRTUALMANAGER_AGENT_TOKEN environment variable is not set."
+        "VIRTUALMANAGER_ENROLLMENT_TOKEN is required until this agent is enrolled."
     )
 
 
@@ -65,7 +67,7 @@ def main() -> None:
 
     client = ServerClient(
         SERVER_URL,
-        AGENT_TOKEN,
+        SAVED_AGENT_TOKEN or ENROLLMENT_TOKEN,
         str(CA_CERTIFICATE),
     )
 
@@ -85,12 +87,17 @@ def main() -> None:
     )
 
     try:
-        client.register_agent(
+        registration = client.register_agent(
             agent_id=agent_id,
             hostname=socket.gethostname(),
             platform=platform.system().lower(),
             version=AGENT_VERSION,
         )
+
+        issued_token = registration.get("agent_token")
+        if issued_token:
+            save_agent_token(issued_token)
+            client.set_token(issued_token)
 
         logger.info(
             "Agent registered successfully."

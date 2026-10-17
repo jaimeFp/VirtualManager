@@ -50,8 +50,8 @@ set -a
 source "$ENV_FILE"
 set +a
 
-if [ -z "$VIRTUALMANAGER_AGENT_TOKEN" ]; then
-    echo "ERROR: VIRTUALMANAGER_AGENT_TOKEN is not defined."
+if [ -z "$VIRTUALMANAGER_ADMIN_TOKEN" ] || [ -z "$VIRTUALMANAGER_ENROLLMENT_TOKEN" ]; then
+    echo "ERROR: VIRTUALMANAGER_ADMIN_TOKEN and VIRTUALMANAGER_ENROLLMENT_TOKEN must be defined."
     exit 1
 fi
 

@@ -1,4 +1,5 @@
 import json
+import os
 import uuid
 
 from pathlib import Path
@@ -48,6 +49,9 @@ def save_config(config: dict[str, Any]) -> None:
             indent=4,
         )
 
+    if os.name != "nt":
+        CONFIG_FILE.chmod(0o600)
+
 
 def get_agent_id() -> str:
     """!
@@ -68,3 +72,15 @@ def get_agent_id() -> str:
     save_config(config)
 
     return agent_id
+
+
+def get_agent_token() -> str | None:
+    """Return the persisted, agent-specific API credential if enrolled."""
+    return load_config().get("agent_token")
+
+
+def save_agent_token(token: str) -> None:
+    """Persist the agent credential so the enrollment secret is only needed once."""
+    config = load_config()
+    config["agent_token"] = token
+    save_config(config)

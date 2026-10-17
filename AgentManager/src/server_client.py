@@ -21,6 +21,10 @@ class ServerClient:
             verify=ca_certificate,
             timeout=timeout,
         )
+
+    def set_token(self, token: str) -> None:
+        """Replace the bootstrap credential with the issued agent credential."""
+        self.client.headers["Authorization"] = f"Bearer {token}"
         
 
     def register_agent(self,agent_id: str,hostname: str,platform: str,version: str) -> dict[str, Any]:
