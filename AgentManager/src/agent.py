@@ -11,6 +11,7 @@ from config import get_agent_id, get_agent_token, save_agent_token
 from logging_config import configure_logging
 from server_client import ServerClient
 from virtualbox import (
+    get_virtual_machine_inventory_details,
     get_virtual_machine_state,
     list_virtual_machines,
 )
@@ -53,6 +54,7 @@ def get_virtual_machine_inventory() -> list[dict[str, str]]:
         machine["state"] = get_virtual_machine_state(
             machine["uuid"]
         )
+        machine.update(get_virtual_machine_inventory_details(machine["uuid"]))
 
     return machines
 

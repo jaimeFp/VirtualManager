@@ -6,6 +6,7 @@ from virtualbox import (
     resume_virtual_machine,
     shutdown_virtual_machine,
     start_virtual_machine,
+    configure_virtual_machine,
 )
 
 
@@ -32,6 +33,12 @@ def execute_command(command: dict[str, Any]) -> None:
 
     elif action == "poweroff":
         poweroff_virtual_machine(uuid)
+
+    elif action == "configure":
+        configuration = command.get("payload")
+        if not isinstance(configuration, dict):
+            raise ValueError("Configuration payload is missing.")
+        configure_virtual_machine(uuid, configuration)
 
     else:
         raise ValueError(

@@ -168,6 +168,65 @@ def get_virtual_machine_info(uuid: str) -> dict[str, str]:
     return information
 
 
+def get_virtual_machine_inventory_details(uuid: str) -> dict[str, object]:
+    """Return resource and network settings reported by VBoxManage."""
+    information = get_virtual_machine_info(uuid)
+    adapters = []
+    for slot in range(1, 9):
+        mode = information.get(f"nic{slot}", "none").lower()
+        adapter_name = ""
+        for key in (f"bridgeadapter{slot}", f"hostonlyadapter{slot}", f"intnet{slot}", f"nat-network{slot}", f"nicgenericdrv{slot}"):
+            if key in information:
+                adapter_name = information[key]
+                break
+        adapters.append({
+            "slot": slot,
+            "enabled": mode != "none",
+            "mode": mode,
+            "adapter": adapter_name,
+            "cable_connected": information.get(f"cableconnected{slot}", "on").lower() == "on",
+        })
+    return {
+        "memory_mb": int(information.get("memory", "0")),
+        "cpu_count": int(information.get("cpus", "0")),
+        "network_adapters": adapters,
+    }
+
+
+def configure_virtual_machine(uuid: str, configuration: dict[str, object]) -> None:
+    """Apply CPU, memory and network settings to a powered-off VM."""
+    if get_virtual_machine_state(uuid) != VM_STATE_POWEROFF:
+        raise ValueError("La máquina debe estar apagada para cambiar su configuración.")
+    memory_mb = configuration.get("memory_mb")
+    cpu_count = configuration.get("cpu_count")
+    adapters = configuration.get("network_adapters")
+    if type(memory_mb) is not int or not 4 <= memory_mb <= 1_048_576:
+        raise ValueError("La memoria debe estar entre 4 y 1 048 576 MB.")
+    if type(cpu_count) is not int or not 1 <= cpu_count <= 256:
+        raise ValueError("Los núcleos deben estar entre 1 y 256.")
+    if not isinstance(adapters, list) or len(adapters) != 8:
+        raise ValueError("Debes especificar las ocho interfaces de red.")
+    arguments = ["modifyvm", uuid, "--memory", str(memory_mb), "--cpus", str(cpu_count)]
+    option_by_mode = {"bridged": "bridgeadapter", "hostonly": "hostonlyadapter", "intnet": "intnet", "natnetwork": "nat-network", "generic": "nicgenericdrv"}
+    allowed_modes = {"none", "null", "nat", "natnetwork", "bridged", "intnet", "hostonly", "generic"}
+    for slot, adapter in enumerate(adapters, 1):
+        if not isinstance(adapter, dict) or adapter.get("slot") != slot:
+            raise ValueError("La configuración de interfaces de red no es válida.")
+        enabled = adapter.get("enabled")
+        mode = adapter.get("mode")
+        name = adapter.get("adapter", "")
+        if type(enabled) is not bool or mode not in allowed_modes or not isinstance(name, str):
+            raise ValueError("La configuración de interfaces de red no es válida.")
+        selected_mode = mode if enabled else "none"
+        arguments.extend([f"--nic{slot}", selected_mode])
+        adapter_option = option_by_mode.get(selected_mode)
+        if adapter_option and name.strip():
+            arguments.extend([f"--{adapter_option}{slot}", name.strip()])
+        if isinstance(adapter.get("cable_connected"), bool):
+            arguments.extend([f"--cableconnected{slot}", "on" if adapter["cable_connected"] else "off"])
+    run_vboxmanage(arguments, timeout=60.0)
+
+
 def start_virtual_machine(uuid: str,headless: bool = True) -> None:
     """!
     @brief Start a virtual machine.

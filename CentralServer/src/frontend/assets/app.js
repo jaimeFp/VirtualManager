@@ -6,7 +6,8 @@ const loginForm = document.querySelector("#login-form");
 const toastRegion = document.querySelector("#toast-region");
 const stateLabels = { running: "Encendida", paused: "Pausada", poweroff: "Apagada", saved: "Guardada", aborted: "Interrumpida" };
 const roleLabels = { admin: "Administrador", operator: "Operador", observer: "Observador" };
-const actionLabels = { start: "Iniciar", pause: "Pausar", resume: "Reanudar", shutdown: "Apagar", poweroff: "Forzar apagado" };
+const actionLabels = { start: "Iniciar", pause: "Pausar", resume: "Reanudar", shutdown: "Apagar", poweroff: "Forzar apagado", configure: "Configurar recursos" };
+const networkModeLabels = { none: "No instalada", null: "Desconectada", nat: "NAT", natnetwork: "Red NAT", bridged: "Adaptador puente", intnet: "Red interna", hostonly: "Solo anfitrión", generic: "Genérico" };
 let authenticated = false;
 let currentUsername = "";
 let currentRole = "";
@@ -18,6 +19,7 @@ let agents = [];
 let machines = [];
 let commands = [];
 let selectedAction = null;
+let configuringMachine = null;
 let lastError = "";
 let previousCommandStates = new Map();
 let refreshing = false;
@@ -287,6 +289,9 @@ function renderVmDetails() {
       document.querySelector("#detail-vm-name").textContent = "Máquina no disponible";
       document.querySelector("#detail-vm-state").textContent = "No se ha encontrado en el inventario del agente.";
       document.querySelector("#vm-page-actions").innerHTML = "";
+      document.querySelector("#detail-vm-memory").textContent = "—";
+      document.querySelector("#detail-vm-cpus").textContent = "—";
+      document.querySelector("#detail-vm-networks").innerHTML = '<tr><td colspan="5" class="empty-cell">Cargando configuración…</td></tr>';
       document.querySelector("#vm-commands-body").innerHTML = '<tr><td colspan="4" class="empty-cell">Cargando inventario de la máquina…</td></tr>';
       return;
     }
@@ -297,6 +302,13 @@ function renderVmDetails() {
     document.querySelector("#detail-agent-status").className = machine.agent_online ? "detail-online" : "detail-offline";
     document.querySelector("#detail-uuid").textContent = machine.uuid;
     document.querySelector("#detail-last-seen").textContent = relativeTime(machine.last_seen);
+    document.querySelector("#detail-vm-memory").textContent = Number.isFinite(machine.memory_mb) ? `${machine.memory_mb.toLocaleString("es-ES")} MB` : "No disponible";
+    document.querySelector("#detail-vm-cpus").textContent = Number.isFinite(machine.cpu_count) ? `${machine.cpu_count} ${machine.cpu_count === 1 ? "núcleo" : "núcleos"}` : "No disponible";
+    const adapters = Array.isArray(machine.network_adapters) ? machine.network_adapters : [];
+    document.querySelector("#detail-vm-networks").innerHTML = adapters.length ? adapters.map(adapter => `<tr><td>Interfaz ${adapter.slot}</td><td>${adapter.enabled ? "Activa" : "Desactivada"}</td><td>${escapeHtml(networkModeLabels[adapter.mode] || adapter.mode || "—")}</td><td>${escapeHtml(adapter.adapter || "—")}</td><td>${adapter.cable_connected ? "Conectado" : "Desconectado"}</td></tr>`).join("") : '<tr><td colspan="5" class="empty-cell">El agente aún no ha informado de las interfaces.</td></tr>';
+    const configButton = document.querySelector("#edit-vm-config");
+    configButton.disabled = currentRole === "observer" || !machine.agent_online || machine.state !== "poweroff";
+    configButton.title = currentRole === "observer" ? "El perfil observador es de solo lectura" : !machine.agent_online ? "El agente no tiene conexión reciente" : machine.state !== "poweroff" ? "Apaga la máquina antes de cambiar su configuración" : "Configurar RAM, CPU e interfaces de red";
     const actions = currentRole === "observer" ? [] : availableActions(machine);
     document.querySelector("#vm-page-actions").innerHTML = currentRole === "observer" ? '<span class="detail-no-actions">Acceso de solo lectura.</span>' : actions.length
       ? actions.map(([action, label, danger]) => `<button class="action-button ${danger ? "danger" : ""}" data-action="${action}" data-agent="${escapeHtml(machine.agent_id)}" data-vm="${escapeHtml(machine.uuid)}" ${machine.agent_online ? "" : "disabled title=\"El agente no tiene conexión reciente\""}>${label}</button>`).join("")
@@ -514,6 +526,65 @@ function openAction(machine, action) {
   document.querySelector("#confirm-action").classList.toggle("danger-button", destructive);
   actionDialog.showModal();
 }
+
+function openVmConfiguration(machine) {
+  configuringMachine = machine;
+  const form = document.querySelector("#vm-config-form");
+  form.elements.memory_mb.value = machine.memory_mb || 1024;
+  form.elements.cpu_count.value = machine.cpu_count || 1;
+  const existing = new Map((machine.network_adapters || []).map(adapter => [adapter.slot, adapter]));
+  const modes = ["nat", "natnetwork", "bridged", "intnet", "hostonly", "generic", "null", "none"];
+  document.querySelector("#network-config-list").innerHTML = Array.from({ length: 8 }, (_, index) => {
+    const slot = index + 1;
+    const adapter = existing.get(slot) || { enabled: false, mode: "nat", adapter: "", cable_connected: true };
+    return `<div class="network-config-row"><label class="network-enabled"><input type="checkbox" data-network-enabled="${slot}" ${adapter.enabled ? "checked" : ""}><span>NIC ${slot}</span></label><label>Modo<select data-network-mode="${slot}">${modes.map(mode => `<option value="${mode}" ${adapter.mode === mode ? "selected" : ""}>${escapeHtml(networkModeLabels[mode])}</option>`).join("")}</select></label><label>Nombre de red<input type="text" data-network-adapter="${slot}" maxlength="255" value="${escapeHtml(adapter.adapter || "")}" placeholder="Opcional"></label><label class="network-cable"><input type="checkbox" data-network-cable="${slot}" ${adapter.cable_connected !== false ? "checked" : ""}><span>Cable conectado</span></label></div>`;
+  }).join("");
+  document.querySelector("#config-dialog").showModal();
+}
+
+document.querySelector("#edit-vm-config").addEventListener("click", () => {
+  const machine = routeMachine();
+  if (machine && currentRole !== "observer" && machine.state === "poweroff" && machine.agent_online) openVmConfiguration(machine);
+});
+document.querySelector("#cancel-vm-config").addEventListener("click", () => document.querySelector("#config-dialog").close());
+document.querySelector("#vm-config-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  if (!configuringMachine) return;
+  const form = event.currentTarget;
+  const button = document.querySelector("#save-vm-config");
+  const network_adapters = Array.from({ length: 8 }, (_, index) => {
+    const slot = index + 1;
+    return {
+      slot,
+      enabled: document.querySelector(`[data-network-enabled="${slot}"]`).checked,
+      mode: document.querySelector(`[data-network-mode="${slot}"]`).value,
+      adapter: document.querySelector(`[data-network-adapter="${slot}"]`).value.trim(),
+      cable_connected: document.querySelector(`[data-network-cable="${slot}"]`).checked,
+    };
+  });
+  button.disabled = true;
+  button.textContent = "Enviando…";
+  try {
+    await api("/api/v1/commands", {
+      method: "POST",
+      body: JSON.stringify({
+        agent_id: configuringMachine.agent_id,
+        vm_uuid: configuringMachine.uuid,
+        action: "configure",
+        payload: { memory_mb: Number(form.elements.memory_mb.value), cpu_count: Number(form.elements.cpu_count.value), network_adapters },
+      }),
+    });
+    document.querySelector("#config-dialog").close();
+    notify(`Configuración enviada a ${configuringMachine.name}.`);
+    configuringMachine = null;
+    await refresh();
+  } catch (error) {
+    notify(error.message, "error");
+  } finally {
+    button.disabled = false;
+    button.innerHTML = "Enviar configuración <span>→</span>";
+  }
+});
 
 document.querySelector("#machines-body").addEventListener("click", event => {
   const detailButton = event.target.closest("button[data-vm-detail]");

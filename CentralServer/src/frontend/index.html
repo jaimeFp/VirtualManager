@@ -87,6 +87,12 @@
           <dl class="detail-list"><div><dt>Agente</dt><dd id="detail-agent"></dd></div><div><dt>Conexión del agente</dt><dd id="detail-agent-status"></dd></div><div><dt>UUID</dt><dd id="detail-uuid"></dd></div><div><dt>Última señal</dt><dd id="detail-last-seen"></dd></div></dl>
           <div class="detail-actions" id="vm-page-actions"></div>
         </section>
+        <section class="panel vm-resources-panel">
+          <div class="panel-heading"><div><div class="section-kicker">RECURSOS Y CONECTIVIDAD</div><h2>Configuración de la máquina</h2></div><button id="edit-vm-config" class="button-secondary" type="button">Configurar</button></div>
+          <div class="vm-resource-summary"><div><span>Memoria RAM</span><strong id="detail-vm-memory">—</strong></div><div><span>Núcleos de CPU</span><strong id="detail-vm-cpus">—</strong></div></div>
+          <div class="table-scroll"><table><thead><tr><th>INTERFAZ</th><th>ESTADO</th><th>MODO</th><th>ADAPTADOR</th><th>CABLE</th></tr></thead><tbody id="detail-vm-networks"><tr><td colspan="5" class="empty-cell">Cargando configuración…</td></tr></tbody></table></div>
+          <p class="vm-config-help">Para cambiar RAM, CPU o red, apaga primero la máquina virtual.</p>
+        </section>
         <section class="panel commands-panel vm-commands-panel">
           <div class="panel-heading"><div><div class="section-kicker">ACTIVIDAD DE ESTA MÁQUINA</div><h2>Órdenes</h2></div><span class="subtle-label" id="command-summary">Seguimiento automático</span></div>
           <div class="table-scroll"><table><thead><tr><th>ACCIÓN</th><th>ESTADO</th><th>CREADA</th><th>FINALIZADA</th></tr></thead><tbody id="vm-commands-body"><tr><td colspan="4" class="empty-cell">Selecciona una máquina para consultar sus órdenes.</td></tr></tbody></table></div>
@@ -120,6 +126,17 @@
     <div class="modal-mark action-mark">↗</div><div class="section-kicker">CONTROL REMOTO</div><h2 id="action-title">Enviar orden</h2><p id="action-description">Confirma la acción para esta máquina.</p>
     <div class="target-machine"><span class="vm-glyph">▤</span><span><strong id="action-vm-name"></strong><small id="action-vm-agent"></small></span></div>
     <div class="modal-actions"><button class="button-secondary" id="cancel-action" type="button">Cancelar</button><button class="button-primary" id="confirm-action" type="button">Enviar orden <span>→</span></button></div>
+  </dialog>
+
+  <dialog class="modal vm-config-modal" id="config-dialog">
+    <form method="dialog" class="modal-close-row"><button class="modal-close" aria-label="Cerrar">×</button></form>
+    <div class="modal-mark agent-access-mark">⚙</div><div class="section-kicker">RECURSOS Y CONECTIVIDAD</div><h2>Configurar máquina</h2><p>Los cambios se aplicarán cuando el agente reciba la orden.</p>
+    <form id="vm-config-form" class="vm-config-form">
+      <div class="vm-config-fields"><label>Memoria RAM (MB)<input name="memory_mb" type="number" min="4" max="1048576" step="1" required></label><label>Núcleos de CPU<input name="cpu_count" type="number" min="1" max="256" step="1" required></label></div>
+      <div class="network-config-heading"><strong>Interfaces de red</strong><span>Activa las interfaces que necesites</span></div>
+      <div id="network-config-list" class="network-config-list"></div>
+      <div class="modal-actions"><button class="button-secondary" id="cancel-vm-config" type="button">Cancelar</button><button class="button-primary" id="save-vm-config" type="submit">Enviar configuración <span>→</span></button></div>
+    </form>
   </dialog>
 
   <dialog class="modal agent-access-modal" id="agent-access-dialog">

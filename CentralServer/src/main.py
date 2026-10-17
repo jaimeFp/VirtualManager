@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import re
 import secrets
@@ -29,6 +30,16 @@ with engine.begin() as connection:
         connection.execute(text("ALTER TABLE web_users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'observer'"))
     if "is_active" not in user_columns:
         connection.execute(text("ALTER TABLE web_users ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE"))
+    vm_columns = {column["name"] for column in inspect(connection).get_columns("virtual_machines")}
+    if "memory_mb" not in vm_columns:
+        connection.execute(text("ALTER TABLE virtual_machines ADD COLUMN memory_mb INTEGER"))
+    if "cpu_count" not in vm_columns:
+        connection.execute(text("ALTER TABLE virtual_machines ADD COLUMN cpu_count INTEGER"))
+    if "network_adapters" not in vm_columns:
+        connection.execute(text("ALTER TABLE virtual_machines ADD COLUMN network_adapters TEXT"))
+    command_columns = {column["name"] for column in inspect(connection).get_columns("commands")}
+    if "payload" not in command_columns:
+        connection.execute(text("ALTER TABLE commands ADD COLUMN payload TEXT"))
 
 app = FastAPI(title="VirtualManager Central Server", version="0.1.0")
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend")
@@ -119,6 +130,7 @@ class CommandCreation(BaseModel):
     agent_id: str
     vm_uuid: str
     action: str
+    payload: dict[str, Any] | None = None
 
 
 class CommandResult(BaseModel):
@@ -373,7 +385,14 @@ def get_agents(
             "platform": agent.platform,
             "version": agent.version,
             "last_seen": agent.last_seen.isoformat(),
-            "vms": [{"uuid": vm.uuid, "name": vm.name, "state": vm.state} for vm in vms],
+            "vms": [{
+                "uuid": vm.uuid,
+                "name": vm.name,
+                "state": vm.state,
+                "memory_mb": vm.memory_mb,
+                "cpu_count": vm.cpu_count,
+                "network_adapters": json.loads(vm.network_adapters or "[]"),
+            } for vm in vms],
         })
     return result
 
@@ -507,6 +526,15 @@ def update_virtual_machines(
         state = item.get("state")
         if not vm_uuid or not isinstance(name, str) or not isinstance(state, str):
             raise HTTPException(status_code=422, detail="Each VM requires string uuid, name and state fields.")
+        memory_mb = item.get("memory_mb")
+        cpu_count = item.get("cpu_count")
+        adapters = item.get("network_adapters", [])
+        if memory_mb is not None and (not isinstance(memory_mb, int) or memory_mb < 1):
+            raise HTTPException(status_code=422, detail="VM memory_mb must be a positive integer.")
+        if cpu_count is not None and (not isinstance(cpu_count, int) or cpu_count < 1):
+            raise HTTPException(status_code=422, detail="VM cpu_count must be a positive integer.")
+        if not isinstance(adapters, list):
+            raise HTTPException(status_code=422, detail="VM network_adapters must be a list.")
         vm = by_uuid.get(vm_uuid)
         if vm is None:
             vm = models.VirtualMachine(agent_id=agent_id, uuid=vm_uuid, name=name, state=state)
@@ -515,6 +543,9 @@ def update_virtual_machines(
             vm.name = name
             vm.state = state
             vm.is_present = True
+        vm.memory_mb = memory_mb
+        vm.cpu_count = cpu_count
+        vm.network_adapters = json.dumps(adapters)
 
     agent.last_seen = now
     database.commit()
@@ -553,6 +584,7 @@ def get_next_command(
         "agent_id": command.agent_id,
         "vm_uuid": vm.uuid,
         "action": command.action,
+        "payload": json.loads(command.payload) if command.payload else None,
         "status": command.status,
         "created_at": command.created_at.isoformat(),
         "started_at": command.started_at.isoformat(),
@@ -577,11 +609,34 @@ def create_command(
     if vm is None:
         raise HTTPException(status_code=404, detail="Virtual machine not found for this agent.")
 
+    if request.action not in {"start", "pause", "resume", "shutdown", "poweroff", "configure"}:
+        raise HTTPException(status_code=422, detail="Unsupported virtual machine action.")
+    if request.action == "configure":
+        if vm.state != "poweroff":
+            raise HTTPException(status_code=409, detail="Apaga la máquina virtual antes de cambiar sus recursos.")
+        payload = request.payload or {}
+        if type(payload.get("memory_mb")) is not int or not 4 <= payload["memory_mb"] <= 1_048_576:
+            raise HTTPException(status_code=422, detail="La memoria debe estar entre 4 y 1 048 576 MB.")
+        if type(payload.get("cpu_count")) is not int or not 1 <= payload["cpu_count"] <= 256:
+            raise HTTPException(status_code=422, detail="Los núcleos deben estar entre 1 y 256.")
+        adapters = payload.get("network_adapters")
+        modes = {"none", "null", "nat", "natnetwork", "bridged", "intnet", "hostonly", "generic"}
+        if not isinstance(adapters, list) or len(adapters) != 8:
+            raise HTTPException(status_code=422, detail="Debes especificar las ocho interfaces de red.")
+        for index, adapter in enumerate(adapters, 1):
+            if (not isinstance(adapter, dict) or adapter.get("slot") != index
+                    or not isinstance(adapter.get("enabled"), bool)
+                    or adapter.get("mode") not in modes
+                    or not isinstance(adapter.get("adapter", ""), str)
+                    or len(adapter.get("adapter", "")) > 255):
+                raise HTTPException(status_code=422, detail="La configuración de interfaces de red no es válida.")
+
     command = models.Command(
         id=str(uuid.uuid4()),
         agent_id=request.agent_id,
         vm_id=vm.id,
         action=request.action,
+        payload=json.dumps(request.payload) if request.payload is not None else None,
         status="pending",
     )
     database.add(command)

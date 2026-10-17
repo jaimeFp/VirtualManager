@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     DateTime,
     ForeignKey,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -176,6 +177,10 @@ class VirtualMachine(Base):
         nullable=False,
     )
 
+    memory_mb: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cpu_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    network_adapters: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     is_present: Mapped[bool] = mapped_column(
         default=True,
         nullable=False,
@@ -232,6 +237,8 @@ class Command(Base):
         String(50),
         nullable=False,
     )
+
+    payload: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     status: Mapped[str] = mapped_column(
         String(50),
