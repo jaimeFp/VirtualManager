@@ -1,13 +1,12 @@
+import { api } from "./api.js";
+import { actionLabels, escapeHtml, networkModeLabels, online, relativeTime, roleLabels, stateClass, stateLabels } from "./helpers.js";
+
 const REFRESH_MS = 5000;
 const loginDialog = document.querySelector("#login-dialog");
 const actionDialog = document.querySelector("#action-dialog");
 const agentAccessDialog = document.querySelector("#agent-access-dialog");
 const loginForm = document.querySelector("#login-form");
 const toastRegion = document.querySelector("#toast-region");
-const stateLabels = { running: "Encendida", paused: "Pausada", poweroff: "Apagada", saved: "Guardada", aborted: "Interrumpida" };
-const roleLabels = { admin: "Administrador", operator: "Operador", observer: "Observador" };
-const actionLabels = { start: "Iniciar", pause: "Pausar", resume: "Reanudar", shutdown: "Apagar", poweroff: "Forzar apagado", configure: "Configurar recursos" };
-const networkModeLabels = { none: "No instalada", null: "Desconectada", nat: "NAT", natnetwork: "Red NAT", bridged: "Adaptador puente", intnet: "Red interna", hostonly: "Solo anfitrión", generic: "Genérico" };
 let authenticated = false;
 let currentUsername = "";
 let currentRole = "";
@@ -25,10 +24,6 @@ let previousCommandStates = new Map();
 let refreshing = false;
 let commandRoute = "";
 
-function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
-}
-
 function notify(message, type = "") {
   const toast = document.createElement("div");
   toast.className = `toast ${type}`;
@@ -37,48 +32,14 @@ function notify(message, type = "") {
   setTimeout(() => toast.remove(), 4200);
 }
 
-function online(agent) {
-  const seen = Date.parse(agent.last_seen || "");
-  return Number.isFinite(seen) && Date.now() - seen < 30000;
-}
-
 function heartbeatLabel(agent) {
   return online(agent) ? "Conectado" : `Sin señal · ${relativeTime(agent.last_seen)}`;
 }
 
-function relativeTime(value) {
-  const time = Date.parse(value || "");
-  if (!Number.isFinite(time)) return "—";
-  const seconds = Math.max(0, Math.floor((Date.now() - time) / 1000));
-  if (seconds < 10) return "Ahora";
-  if (seconds < 60) return `Hace ${seconds} s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `Hace ${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `Hace ${hours} h`;
-  return new Intl.DateTimeFormat("es-ES", { day: "2-digit", month: "short" }).format(time);
-}
-
-async function api(path, options = {}) {
-  const response = await fetch(path, {
-    ...options,
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json", ...options.headers },
-  });
-  if (response.status === 401) {
-    authenticated = false;
-    if (!loginDialog.open) loginDialog.showModal();
-    const error = new Error("La sesión ha caducado. Inicia sesión de nuevo.");
-    error.status = 401;
-    throw error;
-  }
-  if (!response.ok) {
-    let detail = `Error ${response.status}`;
-    try { detail = (await response.json()).detail || detail; } catch { /* Respuesta sin JSON. */ }
-    throw new Error(detail);
-  }
-  return response.json();
-}
+window.addEventListener("virtualmanager:unauthorized", () => {
+  authenticated = false;
+  if (!loginDialog.open) loginDialog.showModal();
+});
 
 function updateUserBadge() {
   const badge = document.querySelector("#user-badge");
