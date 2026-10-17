@@ -27,6 +27,8 @@ Cada función de test se documenta aquí con su objetivo. Al añadir, eliminar o
 
 ### `tests/test_agent_commands.py`
 
+- `test_inventory_details_parses_resources_and_network_interfaces`: comprueba que el agente lee RAM, CPU y modos de red desde la salida de VirtualBox, incluyendo el nombre de adaptador y el estado del cable.
+- `test_inventory_details_defaults_unreported_interfaces_to_disabled`: comprueba que el inventario siempre incluye las ocho interfaces y marca como desactivadas las que VirtualBox no informa.
 - `test_configure_virtual_machine_builds_expected_vboxmanage_arguments`: comprueba que la configuración genera los argumentos correctos de `VBoxManage` para RAM, CPU e interfaces de red.
 - `test_configure_virtual_machine_requires_powered_off_state`: comprueba que el agente no modifica recursos si la VM no está apagada.
 - `test_agent_dispatches_configuration_payload`: comprueba que el despachador entrega al configurador del agente la VM y el contenido de la orden recibida.
