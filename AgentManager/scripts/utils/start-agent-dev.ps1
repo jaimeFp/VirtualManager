@@ -47,8 +47,19 @@ Get-Content $EnvFile | ForEach-Object {
     }
 }
 
-if (-not $env:VIRTUALMANAGER_ENROLLMENT_TOKEN) {
-    Write-Error "VIRTUALMANAGER_ENROLLMENT_TOKEN is not defined."
+$AgentConfig = Join-Path $AgentDir "config\agent.json"
+$HasAgentCredential = $false
+if (Test-Path $AgentConfig) {
+    try {
+        $SavedConfig = Get-Content -Raw -LiteralPath $AgentConfig | ConvertFrom-Json
+        $HasAgentCredential = -not [string]::IsNullOrWhiteSpace($SavedConfig.agent_token)
+    } catch {
+        $HasAgentCredential = $false
+    }
+}
+
+if (-not $env:VIRTUALMANAGER_ENROLLMENT_TOKEN -and -not $HasAgentCredential) {
+    Write-Error "VIRTUALMANAGER_ENROLLMENT_TOKEN is required until this agent is enrolled."
     exit 1
 }
 
