@@ -9,7 +9,6 @@ const actionLabels = { start: "Iniciar", pause: "Pausar", resume: "Reanudar", sh
 let authenticated = false;
 let currentUsername = "";
 let currentRole = "";
-let currentUserId = "";
 let selectedAgentId = sessionStorage.getItem("vm_selected_agent") || "";
 let agents = [];
 let machines = [];
@@ -88,7 +87,6 @@ async function restoreSession() {
     authenticated = true;
     currentUsername = session.username;
     currentRole = session.role;
-    currentUserId = session.id;
     updateUserBadge();
     updateView();
     await refresh();
@@ -308,7 +306,7 @@ async function loadUsers() {
   if (currentRole !== "admin") return;
   try {
     const users = await api("/api/v1/users");
-    document.querySelector("#users-body").innerHTML = users.map(user => `<tr><td><strong>${escapeHtml(user.username)}</strong>${user.id === currentUserId ? ' <span class="subtle-label">Tú</span>' : ""}</td><td><select aria-label="Rol de ${escapeHtml(user.username)}" data-user-role="${escapeHtml(user.id)}"><option value="admin" ${user.role === "admin" ? "selected" : ""}>Administrador</option><option value="operator" ${user.role === "operator" ? "selected" : ""}>Operador</option><option value="observer" ${user.role === "observer" ? "selected" : ""}>Observador</option></select></td><td><select aria-label="Estado de ${escapeHtml(user.username)}" data-user-active="${escapeHtml(user.id)}"><option value="true" ${user.is_active ? "selected" : ""}>Activo</option><option value="false" ${!user.is_active ? "selected" : ""}>Desactivado</option></select></td><td><button class="text-button" data-save-user="${escapeHtml(user.id)}">Guardar</button></td></tr>`).join("");
+    document.querySelector("#users-body").innerHTML = users.map(user => `<tr><td><strong>${escapeHtml(user.username)}</strong></td><td><select aria-label="Rol de ${escapeHtml(user.username)}" data-user-role="${escapeHtml(user.id)}"><option value="admin" ${user.role === "admin" ? "selected" : ""}>Administrador</option><option value="operator" ${user.role === "operator" ? "selected" : ""}>Operador</option><option value="observer" ${user.role === "observer" ? "selected" : ""}>Observador</option></select></td><td><select aria-label="Acceso de ${escapeHtml(user.username)}" data-user-active="${escapeHtml(user.id)}"><option value="true" ${user.is_active ? "selected" : ""}>Puede iniciar sesión</option><option value="false" ${!user.is_active ? "selected" : ""}>Acceso bloqueado</option></select></td><td><button class="text-button" data-save-user="${escapeHtml(user.id)}">Guardar</button></td></tr>`).join("");
   } catch (error) { notify(error.message, "error"); }
 }
 
@@ -323,9 +321,26 @@ document.querySelector("#users-body").addEventListener("click", async event => {
   } catch (error) { notify(error.message, "error"); }
 });
 
-document.querySelector("#user-create-form").addEventListener("submit", async event => {
+const userCreateForm = document.querySelector("#user-create-form");
+const userPasswordInput = userCreateForm.elements.password;
+const userPasswordFeedback = document.querySelector("#user-password-feedback");
+function passwordIsSecure(password) {
+  return password.length >= 12 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password) && /[^A-Za-z0-9]/.test(password);
+}
+userPasswordInput.addEventListener("input", () => {
+  const hasPassword = Boolean(userPasswordInput.value);
+  const isSecure = passwordIsSecure(userPasswordInput.value);
+  userPasswordFeedback.textContent = hasPassword && !isSecure
+    ? "Usa al menos 12 caracteres e incluye mayúsculas, minúsculas, números y símbolos."
+    : "";
+  userPasswordFeedback.classList.toggle("is-visible", hasPassword && !isSecure);
+  userPasswordInput.setCustomValidity(hasPassword && !isSecure ? "La contraseña todavía no es segura." : "");
+});
+
+userCreateForm.addEventListener("submit", async event => {
   event.preventDefault();
   const form = event.currentTarget;
+  if (!form.reportValidity()) return;
   const data = new FormData(form);
   try {
     await api("/api/v1/users", { method: "POST", body: JSON.stringify({ username: data.get("username"), password: data.get("password"), role: data.get("role") }) });
@@ -469,7 +484,6 @@ document.querySelector("#settings-button").addEventListener("click", async () =>
   authenticated = false;
   currentUsername = "";
   currentRole = "";
-  currentUserId = "";
   updateUserBadge();
   commands = [];
   previousCommandStates = new Map();
@@ -520,7 +534,6 @@ loginForm.addEventListener("submit", async event => {
     authenticated = true;
     currentUsername = session.username;
     currentRole = session.role;
-    currentUserId = session.id;
     updateUserBadge();
     loginForm.reset();
     loginDialog.close();

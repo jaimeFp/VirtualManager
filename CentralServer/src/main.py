@@ -68,6 +68,16 @@ def token_digest(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def password_is_secure(password: str) -> bool:
+    return (
+        len(password) >= 12
+        and re.search(r"[a-z]", password) is not None
+        and re.search(r"[A-Z]", password) is not None
+        and re.search(r"\d", password) is not None
+        and re.search(r"[^A-Za-z0-9]", password) is not None
+    )
+
+
 DUMMY_PASSWORD_HASH = hash_password("constant-time-placeholder", b"virtualmanagerdummy")
 
 with Session(engine) as bootstrap_database:
@@ -366,8 +376,8 @@ def create_user(request: UserCreation, database: Session = Depends(get_database)
     username = request.username.strip().lower()
     if not re.fullmatch(r"[a-z0-9_.-]{3,80}", username):
         raise HTTPException(status_code=422, detail="Use 3–80 letters, numbers, dots, underscores or hyphens for the username.")
-    if len(request.password) < 12:
-        raise HTTPException(status_code=422, detail="The initial password must contain at least 12 characters.")
+    if not password_is_secure(request.password):
+        raise HTTPException(status_code=422, detail="The initial password must have at least 12 characters and include uppercase and lowercase letters, a number and a symbol.")
     if request.role not in {"admin", "operator", "observer"}:
         raise HTTPException(status_code=422, detail="Role must be admin, operator or observer.")
     if database.scalar(select(models.WebUser.id).where(models.WebUser.username == username)):

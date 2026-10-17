@@ -17,3 +17,6 @@
 .user-management,.user-form-panel{margin-top:14px}.user-form{display:grid;grid-template-columns:repeat(3,minmax(150px,1fr)) auto;align-items:end;gap:14px;padding:0 19px 18px}.user-form label{display:grid;gap:6px;color:#7e8998;font-size:9px;font-weight:600}.user-form input,.user-form select,.user-management td select{height:34px;border:1px solid #dfe4ec;border-radius:6px;background:#fff;padding:0 9px;color:#344156;font:10px "DM Sans",sans-serif}.user-form small{font-size:8px;color:#99a2ae;font-weight:400}.user-management td select{min-width:130px}.user-management td strong{font-size:10px;color:#344156}.user-management .text-button{font-size:9px}.user-form .button-primary{white-space:nowrap}
 @media(max-width:820px){.user-form{grid-template-columns:repeat(2,minmax(0,1fr))}.user-form .button-primary{justify-self:start}}
 @media(max-width:560px){.user-form{grid-template-columns:1fr;padding:0 13px 14px}.user-management td select{min-width:110px}}
+# Login uses a dedicated opaque gradient backdrop instead of blurring the dashboard.
+.modal#login-dialog::backdrop{background:linear-gradient(135deg,#111d2d 0%,#29394f 56%,#514779 100%);backdrop-filter:none}
+.user-form .password-feedback{display:none}.user-form .password-feedback.is-visible{display:block;color:#b94e48;line-height:1.5}.user-management td select[data-user-active]{min-width:165px}

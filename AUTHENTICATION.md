@@ -10,4 +10,4 @@ VirtualManager uses separate credentials for the browser, agent enrollment, and 
 
 Set the enrollment and web account variables in `CentralServer/dev.env`. Add `VIRTUALMANAGER_ENROLLMENT_TOKEN` to an agent's `AgentManager/dev.env` only while enrolling it. Once the agent has saved its individual credential, remove the enrollment value from that machine and rotate the server's enrollment value. Existing agents continue using their individual credentials; give the new enrollment value only to the next machine being installed.
 
-Set the web username and password in the ignored `CentralServer/dev.env` before the first server start. The initial password must contain at least 12 characters. Do not commit environment files or the agent configuration file.
+Set the web username and password in the ignored `CentralServer/dev.env` before the first server start. Passwords for accounts created in the dashboard must contain at least 12 characters, including uppercase and lowercase letters, a number, and a symbol. Do not commit environment files or the agent configuration file.
