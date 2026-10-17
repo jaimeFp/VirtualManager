@@ -22,5 +22,4 @@
 .user-form .password-feedback{display:none}.user-form .password-feedback.is-visible{display:block;color:#b94e48;line-height:1.5}.user-management td select[data-user-active]{min-width:165px}
 /* The login backdrop is solid white, keeping the dashboard completely out of view. */
 #login-dialog::backdrop{background:#fff!important;backdrop-filter:none!important;opacity:1!important}
-.brand-mark{background:transparent;box-shadow:none;overflow:visible}.brand-mark img{display:block;width:100%;height:100%;object-fit:contain}
-.login-logo{width:66px;height:66px;padding:0;margin:-4px 0 5px;background:transparent!important;box-shadow:none!important}.login-logo img{display:block;width:100%;height:100%;object-fit:contain}
+.login-brand{display:flex;align-items:center;gap:11px;margin:-4px 0 22px}.login-brand .brand-name{font:800 17px Manrope,sans-serif;letter-spacing:-.5px;color:#1c2939}
