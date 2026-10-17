@@ -100,7 +100,7 @@
         </section>
         <section class="panel user-form-panel">
           <div class="panel-heading"><div><div class="section-kicker">NUEVA CUENTA</div><h2>Crear usuario</h2></div></div>
-          <p class="user-access-help">Después de crearla, asigna los agentes que podrá consultar el observador o controlar el operador.</p>
+          <p class="user-access-help">Después de crearla, abre su ventana de agentes permitidos para elegir qué puede consultar el observador o controlar el operador.</p>
           <form id="user-create-form" class="user-form"><label>Nombre de usuario<input name="username" minlength="3" maxlength="80" autocomplete="off" required></label><label>Contraseña inicial<input name="password" type="password" autocomplete="new-password" aria-describedby="user-password-feedback" required><small id="user-password-feedback" class="password-feedback" aria-live="polite"></small></label><label>Rol<select name="role"><option value="observer">Observador</option><option value="operator">Operador</option><option value="admin">Administrador</option></select></label><button class="button-primary" type="submit">Crear usuario <span>→</span></button></form>
         </section>
       </section>
@@ -120,6 +120,13 @@
     <div class="modal-mark action-mark">↗</div><div class="section-kicker">CONTROL REMOTO</div><h2 id="action-title">Enviar orden</h2><p id="action-description">Confirma la acción para esta máquina.</p>
     <div class="target-machine"><span class="vm-glyph">▤</span><span><strong id="action-vm-name"></strong><small id="action-vm-agent"></small></span></div>
     <div class="modal-actions"><button class="button-secondary" id="cancel-action" type="button">Cancelar</button><button class="button-primary" id="confirm-action" type="button">Enviar orden <span>→</span></button></div>
+  </dialog>
+
+  <dialog class="modal agent-access-modal" id="agent-access-dialog">
+    <form method="dialog" class="modal-close-row"><button class="modal-close" aria-label="Cerrar">×</button></form>
+    <div class="modal-mark agent-access-mark">⌘</div><div class="section-kicker">PERMISOS POR AGENTE</div><h2 id="agent-access-title">Agentes permitidos</h2><p id="agent-access-description">Elige los agentes a los que puede acceder esta cuenta.</p>
+    <div id="agent-access-list" class="modal-agent-list"></div>
+    <div class="modal-actions"><button class="button-secondary" id="cancel-agent-access" type="button">Cancelar</button><button class="button-primary" id="save-agent-access" type="button">Guardar permisos <span>→</span></button></div>
   </dialog>
 
 </body>

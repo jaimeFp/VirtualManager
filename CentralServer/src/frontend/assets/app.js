@@ -1,6 +1,7 @@
 const REFRESH_MS = 5000;
 const loginDialog = document.querySelector("#login-dialog");
 const actionDialog = document.querySelector("#action-dialog");
+const agentAccessDialog = document.querySelector("#agent-access-dialog");
 const loginForm = document.querySelector("#login-form");
 const toastRegion = document.querySelector("#toast-region");
 const stateLabels = { running: "Encendida", paused: "Pausada", poweroff: "Apagada", saved: "Guardada", aborted: "Interrumpida" };
@@ -12,6 +13,7 @@ let currentRole = "";
 let selectedAgentId = sessionStorage.getItem("vm_selected_agent") || "";
 let managementAgents = [];
 const pendingAgentScopes = new Map();
+let editingAgentUserId = "";
 let agents = [];
 let machines = [];
 let commands = [];
@@ -313,35 +315,37 @@ async function loadUsers() {
     document.querySelector("#users-body").innerHTML = users.map(user => {
       const selectedAgents = new Set(user.agent_ids || []);
       pendingAgentScopes.set(user.id, [...selectedAgents]);
-      const agentControl = renderAgentAccess(user.id, user.role, selectedAgents);
-      return `<tr><td><strong>${escapeHtml(user.username)}</strong></td><td><select aria-label="Rol de ${escapeHtml(user.username)}" data-user-role="${escapeHtml(user.id)}"><option value="admin" ${user.role === "admin" ? "selected" : ""}>Administrador</option><option value="operator" ${user.role === "operator" ? "selected" : ""}>Operador</option><option value="observer" ${user.role === "observer" ? "selected" : ""}>Observador</option></select></td><td><select aria-label="Acceso de ${escapeHtml(user.username)}" data-user-active="${escapeHtml(user.id)}"><option value="true" ${user.is_active ? "selected" : ""}>Puede iniciar sesión</option><option value="false" ${!user.is_active ? "selected" : ""}>Acceso bloqueado</option></select></td><td>${agentControl}</td><td><button class="text-button" data-save-user="${escapeHtml(user.id)}">Guardar</button></td></tr>`;
+      const agentCount = user.role === "admin" ? "Todos" : `${selectedAgents.size} asignados`;
+      return `<tr><td><strong>${escapeHtml(user.username)}</strong></td><td><select aria-label="Rol de ${escapeHtml(user.username)}" data-user-role="${escapeHtml(user.id)}"><option value="admin" ${user.role === "admin" ? "selected" : ""}>Administrador</option><option value="operator" ${user.role === "operator" ? "selected" : ""}>Operador</option><option value="observer" ${user.role === "observer" ? "selected" : ""}>Observador</option></select></td><td><select aria-label="Acceso de ${escapeHtml(user.username)}" data-user-active="${escapeHtml(user.id)}"><option value="true" ${user.is_active ? "selected" : ""}>Puede iniciar sesión</option><option value="false" ${!user.is_active ? "selected" : ""}>Acceso bloqueado</option></select></td><td><button class="text-button" aria-label="Gestionar agentes permitidos de ${escapeHtml(user.username)}" data-edit-agent-access="${escapeHtml(user.id)}">${agentCount}</button></td><td><button class="text-button" data-save-user="${escapeHtml(user.id)}">Guardar</button></td></tr>`;
     }).join("");
   } catch (error) { notify(error.message, "error"); }
 }
 
-function renderAgentAccess(userId, role, selectedAgents) {
-  if (role === "admin") return '<span class="global-agent-access">Todos los agentes</span>';
-  if (!managementAgents.length) return '<span class="global-agent-access">No hay agentes</span>';
-  return `<details class="agent-access-picker"><summary>${selectedAgents.size} de ${managementAgents.length}</summary><div class="agent-access-options">${managementAgents.map(agent => `<label><input type="checkbox" data-user-agent="${escapeHtml(userId)}" value="${escapeHtml(agent.agent_id)}" ${selectedAgents.has(agent.agent_id) ? "checked" : ""}><span>${escapeHtml(agent.hostname)}</span></label>`).join("")}</div></details>`;
+function openAgentAccessDialog(userId, row) {
+  editingAgentUserId = userId;
+  const username = row.cells[0].textContent.trim();
+  const role = row.querySelector(`[data-user-role="${CSS.escape(userId)}"]`).value;
+  const selectedAgents = new Set(pendingAgentScopes.get(userId) || []);
+  document.querySelector("#agent-access-title").textContent = `Agentes de ${username}`;
+  document.querySelector("#agent-access-description").textContent = role === "admin"
+    ? "Las cuentas administradoras tienen acceso a todos los agentes."
+    : role === "operator"
+      ? "El operador podrá consultar y enviar órdenes a los agentes seleccionados."
+      : "El observador podrá consultar únicamente los agentes seleccionados.";
+  document.querySelector("#agent-access-list").innerHTML = role === "admin"
+    ? '<div class="global-access-note">Acceso global a todos los agentes registrados.</div>'
+    : managementAgents.length
+      ? managementAgents.map(agent => `<label class="modal-agent-option"><input type="checkbox" data-access-agent value="${escapeHtml(agent.agent_id)}" ${selectedAgents.has(agent.agent_id) ? "checked" : ""}><span><strong>${escapeHtml(agent.hostname)}</strong><small>${escapeHtml(agent.platform || "Agente")}${agent.version ? ` · v${escapeHtml(agent.version)}` : ""}</small></span></label>`).join("")
+      : '<div class="global-access-note">Todavía no hay agentes registrados.</div>';
+  agentAccessDialog.showModal();
 }
 
-document.querySelector("#users-body").addEventListener("change", event => {
-  const row = event.target.closest("tr");
-  if (!row) return;
-  const roleSelect = event.target.closest("[data-user-role]");
-  const changedCheckbox = event.target.closest("[data-user-agent]");
-  if (!roleSelect && !changedCheckbox) return;
-  const userId = (roleSelect || changedCheckbox).dataset.userRole || (roleSelect || changedCheckbox).dataset.userAgent;
-  const checked = [...row.querySelectorAll(`[data-user-agent="${CSS.escape(userId)}"]:checked`)].map(input => input.value);
-  const selectedAgents = new Set(checked.length || row.querySelector(`[data-user-agent="${CSS.escape(userId)}"]`)
-    ? checked
-    : (pendingAgentScopes.get(userId) || []));
-  pendingAgentScopes.set(userId, [...selectedAgents]);
-  if (roleSelect) row.cells[3].innerHTML = renderAgentAccess(userId, roleSelect.value, selectedAgents);
-  else row.querySelector(".agent-access-picker summary").textContent = `${selectedAgents.size} de ${managementAgents.length}`;
-});
-
 document.querySelector("#users-body").addEventListener("click", async event => {
+  const accessButton = event.target.closest("[data-edit-agent-access]");
+  if (accessButton) {
+    openAgentAccessDialog(accessButton.dataset.editAgentAccess, accessButton.closest("tr"));
+    return;
+  }
   const button = event.target.closest("[data-save-user]");
   if (!button) return;
   const id = button.dataset.saveUser;
@@ -352,6 +356,37 @@ document.querySelector("#users-body").addEventListener("click", async event => {
     notify("Permisos actualizados.");
     await loadUsers();
   } catch (error) { notify(error.message, "error"); }
+});
+
+document.querySelector("#users-body").addEventListener("change", event => {
+  const roleSelect = event.target.closest("[data-user-role]");
+  if (!roleSelect) return;
+  const row = roleSelect.closest("tr");
+  const id = roleSelect.dataset.userRole;
+  const agentButton = row.querySelector(`[data-edit-agent-access="${CSS.escape(id)}"]`);
+  agentButton.textContent = roleSelect.value === "admin"
+    ? "Todos"
+    : `${(pendingAgentScopes.get(id) || []).length} asignados`;
+});
+
+document.querySelector("#cancel-agent-access").addEventListener("click", () => agentAccessDialog.close());
+document.querySelector("#save-agent-access").addEventListener("click", async () => {
+  if (!editingAgentUserId) return;
+  const id = editingAgentUserId;
+  const row = document.querySelector(`[data-save-user="${CSS.escape(id)}"]`).closest("tr");
+  const role = row.querySelector(`[data-user-role="${CSS.escape(id)}"]`).value;
+  const active = row.querySelector(`[data-user-active="${CSS.escape(id)}"]`).value === "true";
+  const agentIds = role === "admin" ? [] : [...document.querySelectorAll("#agent-access-list [data-access-agent]:checked")].map(input => input.value);
+  const button = document.querySelector("#save-agent-access");
+  button.disabled = true;
+  try {
+    await api(`/api/v1/users/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ role, is_active: active, agent_ids: agentIds }) });
+    pendingAgentScopes.set(id, agentIds);
+    agentAccessDialog.close();
+    notify("Acceso a agentes actualizado.");
+    await loadUsers();
+  } catch (error) { notify(error.message, "error"); }
+  finally { button.disabled = false; }
 });
 
 const userCreateForm = document.querySelector("#user-create-form");
