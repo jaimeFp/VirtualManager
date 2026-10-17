@@ -44,7 +44,7 @@
 
       <section class="stats-grid" aria-label="Resumen de estado">
         <article class="stat-card"><div class="stat-top"><span>Agentes registrados</span><span class="stat-icon purple">⌘</span></div><div class="stat-value" id="stat-agents">—</div><div class="stat-foot"><span class="mini-dot purple-dot"></span><span id="stat-agents-foot">Esperando datos</span></div></article>
-        <article class="stat-card"><div class="stat-top"><span>Agentes conectados</span><span class="stat-icon green">⌁</span></div><div class="stat-value" id="stat-online">—</div><div class="stat-foot"><span class="mini-dot green-dot"></span><span>Vistos en los últimos 30 segundos</span></div></article>
+        <article class="stat-card"><div class="stat-top"><span>Agentes conectados</span><span class="stat-icon green">⌁</span></div><div class="stat-value" id="stat-online">—</div><div class="stat-foot"><span class="mini-dot green-dot"></span><span id="stat-online-foot">Última señal reciente</span></div></article>
         <article class="stat-card"><div class="stat-top"><span>Máquinas virtuales</span><span class="stat-icon blue">▤</span></div><div class="stat-value" id="stat-vms">—</div><div class="stat-foot"><span class="state-summary"><i class="running-dot"></i><span id="stat-running">—</span> encendidas</span></div></article>
         <article class="stat-card"><div class="stat-top"><span>Órdenes pendientes</span><span class="stat-icon amber">↗</span></div><div class="stat-value" id="stat-commands">—</div><div class="stat-foot"><span class="mini-dot amber-dot"></span><span>En espera o en ejecución</span></div></article>
       </section>
@@ -52,20 +52,20 @@
       <section class="content-grid">
         <article class="panel machines-panel" id="maquinas">
           <div class="panel-heading"><div><div class="section-kicker">INFRAESTRUCTURA</div><h2>Máquinas virtuales</h2></div><button class="text-button" id="show-machines">Ver todas <span>→</span></button></div>
-          <div class="filter-row"><label class="search-box"><span>⌕</span><input id="machine-search" type="search" placeholder="Buscar máquina o agente…" autocomplete="off"></label><div class="filter-select-wrap"><select id="state-filter" aria-label="Filtrar por estado"><option value="all">Todos los estados</option><option value="running">Encendidas</option><option value="paused">Pausadas</option><option value="poweroff">Apagadas</option><option value="other">Otros</option></select><span>⌄</span></div></div>
+          <div class="filter-row"><label class="search-box"><span>⌕</span><input id="machine-search" type="search" placeholder="Buscar máquina, UUID o agente…" autocomplete="off"></label><div class="filter-select-wrap"><select id="state-filter" aria-label="Filtrar por estado"><option value="all">Todos los estados</option><option value="running">Encendidas</option><option value="paused">Pausadas</option><option value="poweroff">Apagadas</option><option value="other">Otros</option></select><span>⌄</span></div><div class="filter-select-wrap sort-wrap"><select id="machine-sort" aria-label="Ordenar máquinas"><option value="name">Nombre A–Z</option><option value="agent">Agente A–Z</option><option value="state">Estado</option></select><span>⌄</span></div><label class="group-toggle" title="Agrupar máquinas por agente"><input id="group-agents" type="checkbox"><span class="toggle-track"></span><span>Agrupar</span></label></div>
           <div class="table-scroll"><table><thead><tr><th>MÁQUINA</th><th>AGENTE</th><th>ESTADO</th><th>ÚLTIMA ACTIVIDAD</th><th></th></tr></thead><tbody id="machines-body"><tr><td colspan="5" class="empty-cell"><span class="loader"></span><br>Conectando con el servidor…</td></tr></tbody></table></div>
-          <div class="table-footer"><span id="machine-count">0 máquinas</span><span class="table-note"><i></i> Datos en tiempo real</span></div>
+          <div class="table-footer"><span id="machine-count">0 máquinas</span><span class="table-note" id="inventory-health"><i></i> Sincronizando agentes</span></div>
         </article>
 
         <aside class="panel agents-panel">
           <div class="panel-heading"><div><div class="section-kicker">DISPOSITIVOS</div><h2>Agentes</h2></div><span class="count-pill" id="agent-count">0</span></div>
           <div class="agent-list" id="agent-list"><div class="empty-agents">Los agentes aparecerán aquí al conectarse.</div></div>
-          <div class="agent-panel-footer"><span class="footer-pulse"></span> Supervisión activa</div>
+          <div class="agent-panel-footer"><span class="footer-pulse"></span><span id="agent-health-summary">Supervisión activa</span></div>
         </aside>
       </section>
 
       <section class="panel commands-panel" id="ordenes">
-        <div class="panel-heading"><div><div class="section-kicker">ACTIVIDAD RECIENTE</div><h2>Órdenes</h2></div><span class="subtle-label">Últimas 20</span></div>
+        <div class="panel-heading"><div><div class="section-kicker">ACTIVIDAD RECIENTE</div><h2>Órdenes</h2></div><span class="subtle-label" id="command-summary">Seguimiento automático · últimas 20</span></div>
         <div class="table-scroll"><table><thead><tr><th>ACCIÓN</th><th>MÁQUINA</th><th>AGENTE</th><th>ESTADO</th><th>FECHA</th></tr></thead><tbody id="commands-body"><tr><td colspan="5" class="empty-cell">Cargando órdenes…</td></tr></tbody></table></div>
       </section>
       <footer class="page-footer"><span>VirtualManager <span class="footer-separator">·</span> Consola de monitorización</span><span>Los datos se actualizan cada 5 segundos</span></footer>
@@ -85,6 +85,13 @@
     <div class="modal-mark action-mark">↗</div><div class="section-kicker">CONTROL REMOTO</div><h2 id="action-title">Enviar orden</h2><p id="action-description">Confirma la acción para esta máquina.</p>
     <div class="target-machine"><span class="vm-glyph">▤</span><span><strong id="action-vm-name"></strong><small id="action-vm-agent"></small></span></div>
     <div class="modal-actions"><button class="button-secondary" id="cancel-action" type="button">Cancelar</button><button class="button-primary" id="confirm-action" type="button">Enviar orden <span>→</span></button></div>
+  </dialog>
+
+  <dialog class="modal vm-detail-modal" id="vm-detail-dialog">
+    <form method="dialog" class="modal-close-row"><button class="modal-close" aria-label="Cerrar">×</button></form>
+    <div class="modal-mark vm-detail-mark">▤</div><div class="section-kicker">DETALLE DE MÁQUINA</div><h2 id="detail-vm-name">Máquina virtual</h2><p id="detail-vm-state">Estado actual</p>
+    <dl class="detail-list"><div><dt>Agente</dt><dd id="detail-agent"></dd></div><div><dt>Conexión del agente</dt><dd id="detail-agent-status"></dd></div><div><dt>UUID</dt><dd id="detail-uuid"></dd></div><div><dt>Última señal</dt><dd id="detail-last-seen"></dd></div></dl>
+    <div class="detail-actions" id="detail-actions"></div>
   </dialog>
 </body>
 </html>
