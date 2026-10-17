@@ -1,5 +1,6 @@
 import hashlib
 import os
+import re
 import secrets
 import time
 import uuid
@@ -10,7 +11,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Res
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import delete, select
+from sqlalchemy import delete, inspect, select, text
 from sqlalchemy.orm import Session
 
 from .database import Base, engine, get_database
@@ -21,20 +22,25 @@ from . import models
 # should be upgraded with a migration when Alembic is introduced.
 Base.metadata.create_all(bind=engine)
 
+# Add role columns to databases created before role management was introduced.
+with engine.begin() as connection:
+    user_columns = {column["name"] for column in inspect(connection).get_columns("web_users")}
+    if "role" not in user_columns:
+        connection.execute(text("ALTER TABLE web_users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'observer'"))
+    if "is_active" not in user_columns:
+        connection.execute(text("ALTER TABLE web_users ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE"))
+
 app = FastAPI(title="VirtualManager Central Server", version="0.1.0")
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend")
 app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIR, "assets")), name="assets")
-ADMIN_TOKEN = os.environ.get("VIRTUALMANAGER_ADMIN_TOKEN")
 ENROLLMENT_TOKEN = os.environ.get("VIRTUALMANAGER_ENROLLMENT_TOKEN")
 WEB_USERNAME = os.environ.get("VIRTUALMANAGER_WEB_USERNAME", "").strip().lower()
 WEB_PASSWORD = os.environ.get("VIRTUALMANAGER_WEB_PASSWORD", "")
 WEB_SESSION_COOKIE = "vm_session"
 WEB_SESSION_TTL = 8 * 60 * 60
 
-if not ADMIN_TOKEN or not ENROLLMENT_TOKEN:
-    raise RuntimeError("VIRTUALMANAGER_ADMIN_TOKEN and VIRTUALMANAGER_ENROLLMENT_TOKEN must be set.")
-if secrets.compare_digest(ADMIN_TOKEN, ENROLLMENT_TOKEN):
-    raise RuntimeError("Admin and enrollment credentials must be different.")
+if not ENROLLMENT_TOKEN:
+    raise RuntimeError("VIRTUALMANAGER_ENROLLMENT_TOKEN must be set.")
 if not WEB_USERNAME or not WEB_PASSWORD:
     raise RuntimeError("VIRTUALMANAGER_WEB_USERNAME and VIRTUALMANAGER_WEB_PASSWORD must be set.")
 if len(WEB_PASSWORD) < 12:
@@ -66,8 +72,26 @@ DUMMY_PASSWORD_HASH = hash_password("constant-time-placeholder", b"virtualmanage
 
 with Session(engine) as bootstrap_database:
     if bootstrap_database.scalar(select(models.WebUser.id).limit(1)) is None:
-        bootstrap_database.add(models.WebUser(username=WEB_USERNAME, password_hash=hash_password(WEB_PASSWORD)))
+        bootstrap_database.add(models.WebUser(
+            username=WEB_USERNAME,
+            password_hash=hash_password(WEB_PASSWORD),
+            role="admin",
+            is_active=True,
+        ))
         bootstrap_database.commit()
+    elif bootstrap_database.scalar(
+        select(models.WebUser.id).where(
+            models.WebUser.role == "admin",
+            models.WebUser.is_active.is_(True),
+        ).limit(1)
+    ) is None:
+        bootstrap_user = bootstrap_database.scalar(
+            select(models.WebUser).where(models.WebUser.username == WEB_USERNAME)
+        )
+        if bootstrap_user is not None:
+            bootstrap_user.role = "admin"
+            bootstrap_user.is_active = True
+            bootstrap_database.commit()
 
 
 class AgentRegistration(BaseModel):
@@ -97,6 +121,17 @@ class LoginCredentials(BaseModel):
     password: str
 
 
+class UserCreation(BaseModel):
+    username: str
+    password: str
+    role: str
+
+
+class UserUpdate(BaseModel):
+    role: str | None = None
+    is_active: bool | None = None
+
+
 @app.get("/", include_in_schema=False)
 def frontend() -> FileResponse:
     return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
@@ -117,9 +152,19 @@ def authenticate_user(
         database.commit()
         raise HTTPException(status_code=401, detail="Session expired.")
     user = database.get(models.WebUser, session_record.user_id)
-    if user is None:
+    if user is None or not user.is_active:
+        database.delete(session_record)
+        database.commit()
         raise HTTPException(status_code=401, detail="Login required.")
     return user
+
+
+def require_roles(*allowed_roles: str):
+    def dependency(user: models.WebUser = Depends(authenticate_user)) -> models.WebUser:
+        if user.role not in allowed_roles:
+            raise HTTPException(status_code=403, detail="Your account does not have permission for this action.")
+        return user
+    return dependency
 
 
 @app.post("/api/v1/auth/login")
@@ -132,7 +177,7 @@ def login(
     user = database.scalar(select(models.WebUser).where(models.WebUser.username == username))
     # Run the same password KDF for unknown users to reduce username timing leaks.
     valid = verify_password(credentials.password, user.password_hash if user else DUMMY_PASSWORD_HASH)
-    if not valid or user is None:
+    if not valid or user is None or not user.is_active:
         raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos.")
 
     now = int(time.time())
@@ -153,12 +198,12 @@ def login(
         samesite="strict",
         path="/api/v1",
     )
-    return {"username": user.username}
+    return {"id": user.id, "username": user.username, "role": user.role}
 
 
 @app.get("/api/v1/auth/me")
 def current_user(user: models.WebUser = Depends(authenticate_user)) -> dict[str, str]:
-    return {"username": user.username}
+    return {"id": user.id, "username": user.username, "role": user.role}
 
 
 @app.post("/api/v1/auth/logout")
@@ -190,12 +235,6 @@ def bearer_token(authorization: str | None) -> str:
     if not separator or scheme.lower() != "bearer" or not token:
         raise HTTPException(status_code=401, detail="Invalid authentication credentials.")
     return token
-
-
-def authenticate_admin(authorization: str | None = Header(default=None)) -> None:
-    token = bearer_token(authorization)
-    if not secrets.compare_digest(token, ADMIN_TOKEN):
-        raise HTTPException(status_code=401, detail="Invalid authentication credentials.")
 
 
 def authenticate_agent(
@@ -268,7 +307,7 @@ def register_agent(
     return response
 
 
-@app.post("/api/v1/agents/{agent_id}/credential/rotate", dependencies=[Depends(authenticate_admin)])
+@app.post("/api/v1/agents/{agent_id}/credential/rotate", dependencies=[Depends(require_roles("admin"))])
 def rotate_agent_credential(agent_id: str, database: Session = Depends(get_database)) -> dict[str, str]:
     require_agent(agent_id, database)
     issued_token = secrets.token_urlsafe(32)
@@ -304,6 +343,81 @@ def get_agents(database: Session = Depends(get_database)) -> list[dict[str, Any]
             "vms": [{"uuid": vm.uuid, "name": vm.name, "state": vm.state} for vm in vms],
         })
     return result
+
+
+def user_as_dict(user: models.WebUser) -> dict[str, Any]:
+    return {
+        "id": user.id,
+        "username": user.username,
+        "role": user.role,
+        "is_active": user.is_active,
+        "created_at": user.created_at.isoformat(),
+    }
+
+
+@app.get("/api/v1/users", dependencies=[Depends(require_roles("admin"))])
+def list_users(database: Session = Depends(get_database)) -> list[dict[str, Any]]:
+    users = database.scalars(select(models.WebUser).order_by(models.WebUser.username)).all()
+    return [user_as_dict(user) for user in users]
+
+
+@app.post("/api/v1/users", dependencies=[Depends(require_roles("admin"))], status_code=201)
+def create_user(request: UserCreation, database: Session = Depends(get_database)) -> dict[str, Any]:
+    username = request.username.strip().lower()
+    if not re.fullmatch(r"[a-z0-9_.-]{3,80}", username):
+        raise HTTPException(status_code=422, detail="Use 3–80 letters, numbers, dots, underscores or hyphens for the username.")
+    if len(request.password) < 12:
+        raise HTTPException(status_code=422, detail="The initial password must contain at least 12 characters.")
+    if request.role not in {"admin", "operator", "observer"}:
+        raise HTTPException(status_code=422, detail="Role must be admin, operator or observer.")
+    if database.scalar(select(models.WebUser.id).where(models.WebUser.username == username)):
+        raise HTTPException(status_code=409, detail="That username already exists.")
+    user = models.WebUser(
+        username=username,
+        password_hash=hash_password(request.password),
+        role=request.role,
+        is_active=True,
+    )
+    database.add(user)
+    database.commit()
+    database.refresh(user)
+    return user_as_dict(user)
+
+
+@app.patch("/api/v1/users/{user_id}", dependencies=[Depends(require_roles("admin"))])
+def update_user(
+    user_id: str,
+    request: UserUpdate,
+    current: models.WebUser = Depends(authenticate_user),
+    database: Session = Depends(get_database),
+) -> dict[str, Any]:
+    user = database.get(models.WebUser, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+    fields = request.__fields_set__
+    role = request.role if "role" in fields else user.role
+    is_active = request.is_active if "is_active" in fields else user.is_active
+    if role is not None and role not in {"admin", "operator", "observer"}:
+        raise HTTPException(status_code=422, detail="Role must be admin, operator or observer.")
+    if is_active is None:
+        is_active = user.is_active
+    if current.id == user.id and (role != user.role or not is_active):
+        raise HTTPException(status_code=409, detail="You cannot remove administrator access from your own account.")
+    if user.role == "admin" and user.is_active and (role != "admin" or not is_active):
+        active_admins = database.scalars(
+            select(models.WebUser.id).where(models.WebUser.role == "admin", models.WebUser.is_active.is_(True))
+        ).all()
+        if len(active_admins) <= 1:
+            raise HTTPException(status_code=409, detail="At least one active administrator is required.")
+
+    access_changed = role != user.role or is_active != user.is_active
+    user.role = role or user.role
+    user.is_active = is_active
+    if access_changed:
+        database.execute(delete(models.WebSession).where(models.WebSession.user_id == user.id))
+    database.commit()
+    database.refresh(user)
+    return user_as_dict(user)
 
 
 @app.put("/api/v1/agents/{agent_id}/vms")
@@ -382,7 +496,7 @@ def get_next_command(
     }
 
 
-@app.post("/api/v1/commands", dependencies=[Depends(authenticate_user)])
+@app.post("/api/v1/commands", dependencies=[Depends(require_roles("admin", "operator"))])
 def create_command(request: CommandCreation, database: Session = Depends(get_database)) -> dict[str, Any]:
     require_agent(request.agent_id, database)
     vm = database.scalar(
