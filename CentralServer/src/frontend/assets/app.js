@@ -7,6 +7,7 @@ const toastRegion = document.querySelector("#toast-region");
 const stateLabels = { running: "Encendida", paused: "Pausada", poweroff: "Apagada", saved: "Guardada", aborted: "Interrumpida" };
 const actionLabels = { start: "Iniciar", pause: "Pausar", resume: "Reanudar", shutdown: "Apagar", poweroff: "Forzar apagado" };
 let token = sessionStorage.getItem("vm_api_token") || "";
+let selectedAgentId = sessionStorage.getItem("vm_selected_agent") || "";
 let agents = [];
 let machines = [];
 let commands = [];
@@ -94,48 +95,47 @@ function renderMachines() {
   const query = document.querySelector("#machine-search").value.trim().toLocaleLowerCase("es");
   const filter = document.querySelector("#state-filter").value;
   const sortBy = document.querySelector("#machine-sort").value;
-  const grouped = document.querySelector("#group-agents").checked;
+  const agent = agents.find(item => item.agent_id === selectedAgentId);
+  document.querySelector("#machine-panel-title").textContent = agent ? `Máquinas de ${agent.hostname}` : "Máquinas virtuales";
+  const status = document.querySelector("#selected-agent-status");
+  if (!agent) {
+    status.className = "selected-agent-status";
+    status.innerHTML = "<i></i><span>Selecciona un agente para empezar</span>";
+    document.querySelector("#inventory-health").innerHTML = "<i></i> Esperando selección";
+    document.querySelector("#machine-count").textContent = "Selecciona un agente";
+    document.querySelector("#machines-body").innerHTML = '<tr><td colspan="5" class="empty-cell">Selecciona un agente para mostrar sus máquinas virtuales.</td></tr>';
+    return;
+  }
+  const isOnline = online(agent);
+  status.className = `selected-agent-status ${isOnline ? "is-online" : "is-stale"}`;
+  status.innerHTML = `<i></i><span>${isOnline ? "Conectado" : "Sin señal reciente"} · última señal ${relativeTime(agent.last_seen)}</span>`;
   let shown = machines.filter(machine => {
-    const matchesQuery = `${machine.name} ${machine.agent_name} ${machine.uuid}`.toLocaleLowerCase("es").includes(query);
+    if (machine.agent_id !== selectedAgentId) return false;
+    const matchesQuery = `${machine.name} ${machine.uuid}`.toLocaleLowerCase("es").includes(query);
     const matchesState = filter === "all" || (filter === "other" ? !["running", "paused", "poweroff"].includes(machine.state) : machine.state === filter);
     return matchesQuery && matchesState;
   });
   const collator = new Intl.Collator("es", { sensitivity: "base", numeric: true });
   const compareMachines = (left, right) => {
-    if (sortBy === "agent") return collator.compare(left.agent_name, right.agent_name) || collator.compare(left.name, right.name);
     if (sortBy === "state") return collator.compare(stateLabels[left.state] || left.state, stateLabels[right.state] || right.state) || collator.compare(left.name, right.name);
     return collator.compare(left.name, right.name);
   };
-  shown.sort(grouped
-    ? (left, right) => collator.compare(left.agent_name, right.agent_name) || compareMachines(left, right)
-    : compareMachines);
+  shown.sort(compareMachines);
   document.querySelector("#machine-count").textContent = `${shown.length} ${shown.length === 1 ? "máquina" : "máquinas"}`;
-  const onlineCount = agents.filter(online).length;
-  const staleCount = agents.length - onlineCount;
-  document.querySelector("#inventory-health").innerHTML = `<i class="${staleCount ? "stale-pulse" : ""}"></i>${onlineCount} conectados${staleCount ? ` · ${staleCount} sin señal` : " · todo al día"}`;
+  document.querySelector("#inventory-health").innerHTML = `<i class="${isOnline ? "" : "stale-pulse"}"></i>${isOnline ? "Inventario actualizado" : "Inventario desactualizado"}`;
   const body = document.querySelector("#machines-body");
   if (!shown.length) {
-    body.innerHTML = `<tr><td colspan="5" class="empty-cell">${machines.length ? "No hay máquinas que coincidan con el filtro." : "No se han detectado máquinas virtuales."}</td></tr>`;
+    const hasMachines = machines.some(machine => machine.agent_id === selectedAgentId);
+    body.innerHTML = `<tr><td colspan="5" class="empty-cell">${hasMachines ? "No hay máquinas que coincidan con el filtro." : "Este agente todavía no tiene máquinas virtuales."}</td></tr>`;
     return;
   }
-  const rows = [];
-  let previousAgent = "";
-  for (const machine of shown) {
-    if (grouped && machine.agent_id !== previousAgent) {
-      const agent = agents.find(item => item.agent_id === machine.agent_id);
-      const agentCount = shown.filter(item => item.agent_id === machine.agent_id).length;
-      rows.push(`<tr class="group-row"><td colspan="5"><span class="group-symbol">⌘</span><strong>${escapeHtml(machine.agent_name)}</strong><span class="group-meta">${agentCount} ${agentCount === 1 ? "máquina" : "máquinas"} · ${agent && online(agent) ? "conectado" : "sin señal"}</span></td></tr>`);
-      previousAgent = machine.agent_id;
-    }
-    rows.push(`<tr>
+  body.innerHTML = shown.map(machine => `<tr>
       <td><div class="machine-name"><span class="vm-glyph">▤</span><span><button class="vm-name-button" data-vm-detail="${escapeHtml(machine.uuid)}" data-agent="${escapeHtml(machine.agent_id)}" title="Ver detalle de ${escapeHtml(machine.name)}">${escapeHtml(machine.name)}</button><small>${escapeHtml(machine.uuid)}</small></span></div></td>
       <td><span class="agent-chip"><i class="${machine.agent_online ? "" : "offline"}"></i>${escapeHtml(machine.agent_name)}${machine.agent_online ? "" : " · sin señal"}</span></td>
       <td><span class="status-badge ${stateClass(machine.state)}"><i></i>${escapeHtml(stateLabels[machine.state] || machine.state || "Desconocido")}</span></td>
       <td class="date-cell">${relativeTime(machine.last_seen)}</td>
       <td>${actionButtons(machine)}</td>
-    </tr>`);
-  }
-  body.innerHTML = rows.join("");
+    </tr>`).join("");
 }
 
 function renderAgents() {
@@ -156,8 +156,27 @@ function renderAgents() {
   list.innerHTML = agents.map(agent => {
     const count = (agent.vms || []).length;
     const platform = `${agent.platform || "Sistema"}${agent.version ? ` · v${agent.version}` : ""}`;
-    return `<div class="agent-row ${online(agent) ? "" : "agent-stale"}"><span class="agent-icon">⌘</span><span class="agent-name"><strong title="${escapeHtml(agent.hostname)}">${escapeHtml(agent.hostname)}</strong><small>${escapeHtml(platform)}</small><span class="agent-vms">${count} ${count === 1 ? "máquina" : "máquinas"} · ${heartbeatLabel(agent)}</span></span><i class="agent-health ${online(agent) ? "" : "offline"}" title="${online(agent) ? "Conectado" : "Sin actividad reciente"}"></i></div>`;
+    return `<div class="agent-row ${online(agent) ? "" : "agent-stale"}"><span class="agent-icon">⌘</span><span class="agent-name"><strong title="${escapeHtml(agent.hostname)}">${escapeHtml(agent.hostname)}</strong><small>${escapeHtml(platform)}</small><span class="agent-vms">${count} ${count === 1 ? "máquina" : "máquinas"} · ${heartbeatLabel(agent)}</span></span><i class="agent-health ${online(agent) ? "" : "offline"}" title="${online(agent) ? "Conectado" : "Sin actividad reciente"}"></i><button class="agent-open-button" data-open-agent="${escapeHtml(agent.agent_id)}" title="Ver máquinas de ${escapeHtml(agent.hostname)}">Ver máquinas <span>→</span></button></div>`;
   }).join("");
+}
+
+function renderAgentSelector() {
+  const selector = document.querySelector("#agent-selector");
+  const selectedExists = agents.some(agent => agent.agent_id === selectedAgentId);
+  if (!selectedExists) {
+    selectedAgentId = "";
+    sessionStorage.removeItem("vm_selected_agent");
+  }
+  const signature = agents.map(agent => `${agent.agent_id}:${agent.hostname}:${(agent.vms || []).length}:${online(agent)}`).join("|");
+  if (selector.dataset.signature !== signature) {
+    selector.innerHTML = `<option value="">Selecciona un agente</option>${agents.map(agent => {
+    const count = (agent.vms || []).length;
+    const connection = online(agent) ? "Conectado" : "Sin señal";
+    return `<option value="${escapeHtml(agent.agent_id)}">${escapeHtml(agent.hostname)} · ${count} VM · ${connection}</option>`;
+    }).join("")}`;
+    selector.dataset.signature = signature;
+  }
+  if (selector.value !== selectedAgentId) selector.value = selectedAgentId;
 }
 
 function renderCommands() {
@@ -188,9 +207,24 @@ function render() {
   document.querySelector("#stat-vms").textContent = machines.length;
   document.querySelector("#stat-running").textContent = running;
   document.querySelector("#stat-commands").textContent = outstanding;
+  renderAgentSelector();
   renderMachines();
   renderAgents();
   renderCommands();
+}
+
+function updateView() {
+  const hash = window.location.hash;
+  const view = hash === "#maquinas" ? "machines" : hash === "#ordenes" ? "orders" : "dashboard";
+  const isMachines = view === "machines";
+  document.querySelector("#dashboard-screen").classList.toggle("hidden-screen", isMachines);
+  document.querySelector("#machines-screen").classList.toggle("hidden-screen", !isMachines);
+  document.querySelectorAll(".nav-link[data-view]").forEach(link => {
+    link.classList.toggle("selected", link.dataset.view === view);
+  });
+  document.querySelector("#breadcrumb-current").textContent = view === "machines" ? "Máquinas virtuales" : view === "orders" ? "Órdenes" : "Resumen";
+  if (view === "orders") requestAnimationFrame(() => document.querySelector("#ordenes").scrollIntoView({ behavior: "smooth", block: "start" }));
+  if (isMachines) renderMachines();
 }
 
 async function refresh() {
@@ -231,12 +265,16 @@ async function refresh() {
     document.querySelector(".connection-dot").classList.add("online");
     document.querySelector("#updated-label").textContent = `Actualizado ${new Intl.DateTimeFormat("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date())}`;
     document.querySelector("#updated-label").classList.remove("stale-data");
+    document.querySelector("#machines-updated-label").textContent = `Inventario sincronizado ${new Intl.DateTimeFormat("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date())}`;
+    document.querySelector("#machines-updated-label").classList.remove("stale-data");
     lastError = "";
   } catch (error) {
     document.querySelector("#connection-label").textContent = "Error de conexión";
     document.querySelector(".connection-dot").classList.remove("online");
     document.querySelector("#updated-label").textContent = "Sin conexión · datos anteriores";
     document.querySelector("#updated-label").classList.add("stale-data");
+    document.querySelector("#machines-updated-label").textContent = "Sin conexión · datos anteriores";
+    document.querySelector("#machines-updated-label").classList.add("stale-data");
     if (error.message !== lastError) notify(error.message, "error");
     lastError = error.message;
   } finally {
@@ -295,6 +333,16 @@ document.querySelector("#detail-actions").addEventListener("click", event => {
   if (machine) openAction(machine, button.dataset.action);
 });
 
+document.querySelector("#agent-list").addEventListener("click", event => {
+  const button = event.target.closest("button[data-open-agent]");
+  if (!button) return;
+  selectedAgentId = button.dataset.openAgent;
+  sessionStorage.setItem("vm_selected_agent", selectedAgentId);
+  document.querySelector("#agent-selector").value = selectedAgentId;
+  window.location.hash = "#maquinas";
+  renderMachines();
+});
+
 document.querySelector("#confirm-action").addEventListener("click", async () => {
   if (!selectedAction) return;
   const button = document.querySelector("#confirm-action");
@@ -325,13 +373,12 @@ document.querySelector("#settings-button").addEventListener("click", () => docum
 document.querySelector("#cancel-token").addEventListener("click", () => tokenDialog.close());
 document.querySelector("#cancel-action").addEventListener("click", () => actionDialog.close());
 document.querySelector("#refresh-button").addEventListener("click", refresh);
-const filterControls = ["#machine-search", "#state-filter", "#machine-sort", "#group-agents"].map(selector => document.querySelector(selector));
+const filterControls = ["#machine-search", "#state-filter", "#machine-sort"].map(selector => document.querySelector(selector));
 function saveFilters() {
   sessionStorage.setItem("vm_machine_filters", JSON.stringify({
     query: filterControls[0].value,
     state: filterControls[1].value,
     sort: filterControls[2].value,
-    grouped: filterControls[3].checked,
   }));
 }
 for (const control of filterControls) {
@@ -341,9 +388,17 @@ filterControls[0].addEventListener("input", () => { saveFilters(); renderMachine
 document.querySelector("#show-machines").addEventListener("click", () => {
   filterControls[0].value = "";
   filterControls[1].value = "all";
+  filterControls[2].value = "name";
   saveFilters();
   renderMachines();
 });
+document.querySelector("#agent-selector").addEventListener("change", event => {
+  selectedAgentId = event.target.value;
+  if (selectedAgentId) sessionStorage.setItem("vm_selected_agent", selectedAgentId);
+  else sessionStorage.removeItem("vm_selected_agent");
+  renderMachines();
+});
+window.addEventListener("hashchange", updateView);
 tokenForm.addEventListener("submit", event => {
   event.preventDefault();
   token = document.querySelector("#token-input").value.trim();
@@ -358,8 +413,8 @@ try {
   const saved = JSON.parse(sessionStorage.getItem("vm_machine_filters") || "{}");
   filterControls[0].value = saved.query || "";
   filterControls[1].value = ["all", "running", "paused", "poweroff", "other"].includes(saved.state) ? saved.state : "all";
-  filterControls[2].value = ["name", "agent", "state"].includes(saved.sort) ? saved.sort : "name";
-  filterControls[3].checked = Boolean(saved.grouped);
+  filterControls[2].value = ["name", "state"].includes(saved.sort) ? saved.sort : "name";
 } catch { sessionStorage.removeItem("vm_machine_filters"); }
+updateView();
 refresh();
 setInterval(refresh, REFRESH_MS);
