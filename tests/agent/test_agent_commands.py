@@ -1,7 +1,6 @@
 import pytest
 
-import virtualbox
-import commands
+from virtualmanager_agent import commands, virtualbox
 
 
 def test_inventory_details_parses_resources_and_network_interfaces(monkeypatch):

@@ -4,7 +4,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 LOG_DIRECTORY = PROJECT_ROOT / "logs"
 LOG_FILE = LOG_DIRECTORY / "agent.log"

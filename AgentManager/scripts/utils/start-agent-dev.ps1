@@ -9,7 +9,7 @@ $AgentDir = Split-Path -Parent (
 )
 
 $EnvFile = Join-Path $AgentDir "dev.env"
-$AgentScript = Join-Path $AgentDir "src\agent.py"
+$AgentModule = Join-Path $AgentDir "src\virtualmanager_agent\__main__.py"
 $Certificate = Join-Path $AgentDir "certs\server.crt"
 
 Write-Host "[VirtualManager] Starting Agent..."
@@ -20,8 +20,8 @@ if (-not (Test-Path $EnvFile)) {
     exit 1
 }
 
-if (-not (Test-Path $AgentScript)) {
-    Write-Error "Agent script not found: $AgentScript"
+if (-not (Test-Path $AgentModule)) {
+    Write-Error "Agent module not found: $AgentModule"
     exit 1
 }
 
@@ -64,8 +64,9 @@ if (-not $env:VIRTUALMANAGER_ENROLLMENT_TOKEN -and -not $HasAgentCredential) {
 }
 
 Set-Location $AgentDir
+$env:PYTHONPATH = Join-Path $AgentDir "src"
 
 Write-Host "[VirtualManager] Environment loaded."
 Write-Host "[VirtualManager] Starting AgentManager..."
 
-python .\src\agent.py
+python -m virtualmanager_agent

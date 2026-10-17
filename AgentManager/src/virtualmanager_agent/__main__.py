@@ -6,11 +6,11 @@ import time
 
 from pathlib import Path
 
-from commands import execute_command
-from config import get_agent_id, get_agent_token, save_agent_token
-from logging_config import configure_logging
-from server_client import ServerClient
-from virtualbox import (
+from .commands import execute_command
+from .config import get_agent_id, get_agent_token, save_agent_token
+from .logging_config import configure_logging
+from .server_client import ServerClient
+from .virtualbox import (
     get_virtual_machine_inventory_details,
     get_virtual_machine_state,
     list_virtual_machines,
@@ -23,7 +23,7 @@ POLL_INTERVAL = 5
 
 ENROLLMENT_TOKEN = os.environ.get("VIRTUALMANAGER_ENROLLMENT_TOKEN")
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 CA_CERTIFICATE = (
     PROJECT_ROOT

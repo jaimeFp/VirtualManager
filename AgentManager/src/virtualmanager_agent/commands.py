@@ -1,6 +1,6 @@
 from typing import Any
 
-from virtualbox import (
+from .virtualbox import (
     pause_virtual_machine,
     poweroff_virtual_machine,
     resume_virtual_machine,
