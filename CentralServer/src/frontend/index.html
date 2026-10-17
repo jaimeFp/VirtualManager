@@ -22,7 +22,6 @@
       <nav class="navigation" aria-label="Navegación principal">
         <a class="nav-link selected" href="#inicio" data-view="dashboard"><span class="nav-icon">▦</span>Resumen</a>
         <a class="nav-link" href="#maquinas" data-view="machines"><span class="nav-icon">▤</span>Máquinas virtuales</a>
-        <a class="nav-link" href="#ordenes" data-view="orders"><span class="nav-icon">↗</span>Órdenes</a>
       </nav>
       <div class="sidebar-bottom">
         <div class="connection-card"><span class="connection-dot"></span><div><strong>Servidor central</strong><small id="connection-label">Esperando conexión</small></div></div>
@@ -47,7 +46,6 @@
         <article class="stat-card"><div class="stat-top"><span>Agentes registrados</span><span class="stat-icon purple">⌘</span></div><div class="stat-value" id="stat-agents">—</div><div class="stat-foot"><span class="mini-dot purple-dot"></span><span id="stat-agents-foot">Esperando datos</span></div></article>
         <article class="stat-card"><div class="stat-top"><span>Agentes conectados</span><span class="stat-icon green">⌁</span></div><div class="stat-value" id="stat-online">—</div><div class="stat-foot"><span class="mini-dot green-dot"></span><span id="stat-online-foot">Última señal reciente</span></div></article>
         <article class="stat-card"><div class="stat-top"><span>Máquinas virtuales</span><span class="stat-icon blue">▤</span></div><div class="stat-value" id="stat-vms">—</div><div class="stat-foot"><span class="state-summary"><i class="running-dot"></i><span id="stat-running">—</span> encendidas</span><a class="stat-link" href="#maquinas">Gestionar →</a></div></article>
-        <article class="stat-card"><div class="stat-top"><span>Órdenes pendientes</span><span class="stat-icon amber">↗</span></div><div class="stat-value" id="stat-commands">—</div><div class="stat-foot"><span class="mini-dot amber-dot"></span><span>En espera o en ejecución</span></div></article>
       </section>
 
       <section class="content-grid dashboard-grid">
@@ -58,10 +56,6 @@
         </aside>
       </section>
 
-      <section class="panel commands-panel" id="ordenes">
-        <div class="panel-heading"><div><div class="section-kicker">ACTIVIDAD RECIENTE</div><h2>Órdenes</h2></div><span class="subtle-label" id="command-summary">Seguimiento automático · últimas 20</span></div>
-        <div class="table-scroll"><table><thead><tr><th>ACCIÓN</th><th>MÁQUINA</th><th>AGENTE</th><th>ESTADO</th><th>FECHA</th></tr></thead><tbody id="commands-body"><tr><td colspan="5" class="empty-cell">Cargando órdenes…</td></tr></tbody></table></div>
-      </section>
       </section>
 
       <section id="machines-screen" class="view-screen hidden-screen">
@@ -80,6 +74,21 @@
           <div class="table-scroll"><table><thead><tr><th>MÁQUINA</th><th>AGENTE</th><th>ESTADO</th><th>ÚLTIMA SEÑAL</th><th></th></tr></thead><tbody id="machines-body"><tr><td colspan="5" class="empty-cell">Selecciona un agente para mostrar sus máquinas.</td></tr></tbody></table></div>
           <div class="table-footer"><span id="machine-count">Selecciona un agente</span><span class="table-note" id="inventory-health"><i></i> Esperando selección</span></div>
         </article>
+      </section>
+      <section id="vm-detail-screen" class="view-screen hidden-screen">
+        <section class="page-heading">
+          <div><a class="back-link" href="#maquinas">← Volver a máquinas virtuales</a><div class="eyebrow"><span></span> DETALLE DE MÁQUINA</div><h1 id="detail-vm-name">Máquina virtual</h1><p id="detail-vm-state">Cargando estado…</p></div>
+          <div class="updated"><span class="updated-dot"></span><span id="detail-updated-label">Sin sincronizar</span></div>
+        </section>
+        <section class="detail-overview panel">
+          <div class="panel-heading"><div><div class="section-kicker">INFORMACIÓN</div><h2>Datos de la máquina</h2></div></div>
+          <dl class="detail-list"><div><dt>Agente</dt><dd id="detail-agent"></dd></div><div><dt>Conexión del agente</dt><dd id="detail-agent-status"></dd></div><div><dt>UUID</dt><dd id="detail-uuid"></dd></div><div><dt>Última señal</dt><dd id="detail-last-seen"></dd></div></dl>
+          <div class="detail-actions" id="vm-page-actions"></div>
+        </section>
+        <section class="panel commands-panel vm-commands-panel">
+          <div class="panel-heading"><div><div class="section-kicker">ACTIVIDAD DE ESTA MÁQUINA</div><h2>Órdenes</h2></div><span class="subtle-label" id="command-summary">Seguimiento automático</span></div>
+          <div class="table-scroll"><table><thead><tr><th>ACCIÓN</th><th>ESTADO</th><th>CREADA</th><th>FINALIZADA</th></tr></thead><tbody id="vm-commands-body"><tr><td colspan="4" class="empty-cell">Selecciona una máquina para consultar sus órdenes.</td></tr></tbody></table></div>
+        </section>
       </section>
       <footer class="page-footer"><span>VirtualManager <span class="footer-separator">·</span> Consola de monitorización</span><span>Los datos se actualizan cada 5 segundos</span></footer>
     </main>
@@ -100,11 +109,5 @@
     <div class="modal-actions"><button class="button-secondary" id="cancel-action" type="button">Cancelar</button><button class="button-primary" id="confirm-action" type="button">Enviar orden <span>→</span></button></div>
   </dialog>
 
-  <dialog class="modal vm-detail-modal" id="vm-detail-dialog">
-    <form method="dialog" class="modal-close-row"><button class="modal-close" aria-label="Cerrar">×</button></form>
-    <div class="modal-mark vm-detail-mark">▤</div><div class="section-kicker">DETALLE DE MÁQUINA</div><h2 id="detail-vm-name">Máquina virtual</h2><p id="detail-vm-state">Estado actual</p>
-    <dl class="detail-list"><div><dt>Agente</dt><dd id="detail-agent"></dd></div><div><dt>Conexión del agente</dt><dd id="detail-agent-status"></dd></div><div><dt>UUID</dt><dd id="detail-uuid"></dd></div><div><dt>Última señal</dt><dd id="detail-last-seen"></dd></div></dl>
-    <div class="detail-actions" id="detail-actions"></div>
-  </dialog>
 </body>
 </html>

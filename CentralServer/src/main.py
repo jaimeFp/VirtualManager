@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -237,9 +237,20 @@ def command_as_dict(command: models.Command, vm_uuid: str) -> dict[str, Any]:
 
 
 @app.get("/api/v1/commands", dependencies=[Depends(authenticate_agent)])
-def get_all_commands(database: Session = Depends(get_database)) -> list[dict[str, Any]]:
-    commands = database.scalars(select(models.Command).order_by(models.Command.created_at.desc())).all()
-    return [command_as_dict(command, database.get(models.VirtualMachine, command.vm_id).uuid) for command in commands]
+def get_all_commands(
+    agent_id: str | None = Query(default=None),
+    vm_uuid: str | None = Query(default=None),
+    database: Session = Depends(get_database),
+) -> list[dict[str, Any]]:
+    statement = select(models.Command, models.VirtualMachine.uuid).join(
+        models.VirtualMachine, models.Command.vm_id == models.VirtualMachine.id
+    )
+    if agent_id:
+        statement = statement.where(models.Command.agent_id == agent_id)
+    if vm_uuid:
+        statement = statement.where(models.VirtualMachine.uuid == vm_uuid)
+    rows = database.execute(statement.order_by(models.Command.created_at.desc())).all()
+    return [command_as_dict(command, machine_uuid) for command, machine_uuid in rows]
 
 
 @app.get("/api/v1/commands/{command_id}", dependencies=[Depends(authenticate_agent)])

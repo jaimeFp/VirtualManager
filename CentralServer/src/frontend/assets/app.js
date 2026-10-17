@@ -1,7 +1,6 @@
 const REFRESH_MS = 5000;
 const tokenDialog = document.querySelector("#token-dialog");
 const actionDialog = document.querySelector("#action-dialog");
-const vmDetailDialog = document.querySelector("#vm-detail-dialog");
 const tokenForm = document.querySelector("#token-form");
 const toastRegion = document.querySelector("#toast-region");
 const stateLabels = { running: "Encendida", paused: "Pausada", poweroff: "Apagada", saved: "Guardada", aborted: "Interrumpida" };
@@ -15,6 +14,7 @@ let selectedAction = null;
 let lastError = "";
 let previousCommandStates = new Map();
 let refreshing = false;
+let commandRoute = "";
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
@@ -179,23 +179,22 @@ function renderAgentSelector() {
   if (selector.value !== selectedAgentId) selector.value = selectedAgentId;
 }
 
-function renderCommands() {
-  const body = document.querySelector("#commands-body");
+function renderVmCommands() {
+  const body = document.querySelector("#vm-commands-body");
   const recent = commands.slice(0, 20);
   const pendingCount = commands.filter(command => command.status === "pending").length;
   const runningCount = commands.filter(command => command.status === "running").length;
   document.querySelector("#command-summary").textContent = `${pendingCount} pendientes · ${runningCount} en curso · últimas 20`;
   if (!recent.length) {
-    body.innerHTML = '<tr><td colspan="5" class="empty-cell">Todavía no hay órdenes. Usa los controles de una máquina para enviar la primera.</td></tr>';
+    body.innerHTML = '<tr><td colspan="4" class="empty-cell">Esta máquina todavía no tiene órdenes.</td></tr>';
     return;
   }
   body.innerHTML = recent.map(command => {
     const statusClass = { pending: "command-pending", running: "command-running", success: "command-success", failed: "command-failed" }[command.status] || "command-pending";
     const statusLabel = { pending: "Pendiente", running: "En curso", success: "Completada", failed: "Fallida" }[command.status] || command.status;
-    const machine = machines.find(item => item.uuid === command.vm_uuid && item.agent_id === command.agent_id);
-    const row = `<tr><td class="action-label">${escapeHtml(actionLabels[command.action] || command.action)}</td><td>${escapeHtml(machine?.name || command.vm_uuid)}</td><td>${escapeHtml(machine?.agent_name || command.agent_id.slice(0, 8))}</td><td><span class="command-badge ${statusClass}">${statusLabel}</span></td><td class="date-cell">${relativeTime(command.completed_at || command.started_at || command.created_at)}</td></tr>`;
+    const row = `<tr><td class="action-label">${escapeHtml(actionLabels[command.action] || command.action)}</td><td><span class="command-badge ${statusClass}">${statusLabel}</span></td><td class="date-cell">${relativeTime(command.created_at)}</td><td class="date-cell">${relativeTime(command.completed_at)}</td></tr>`;
     const errorRow = command.status === "failed" && command.error
-      ? `<tr class="command-error-row"><td colspan="5"><span class="error-symbol">!</span><strong>Error de ejecución:</strong> ${escapeHtml(command.error)}</td></tr>`
+      ? `<tr class="command-error-row"><td colspan="4"><span class="error-symbol">!</span><strong>Error de ejecución:</strong> ${escapeHtml(command.error)}</td></tr>`
       : "";
     return row + errorRow;
   }).join("");
@@ -203,28 +202,73 @@ function renderCommands() {
 
 function render() {
   const running = machines.filter(machine => machine.state === "running").length;
-  const outstanding = commands.filter(command => ["pending", "running"].includes(command.status)).length;
   document.querySelector("#stat-vms").textContent = machines.length;
   document.querySelector("#stat-running").textContent = running;
-  document.querySelector("#stat-commands").textContent = outstanding;
   renderAgentSelector();
   renderMachines();
   renderAgents();
-  renderCommands();
+  renderVmDetails();
 }
 
 function updateView() {
   const hash = window.location.hash;
-  const view = hash === "#maquinas" ? "machines" : hash === "#ordenes" ? "orders" : "dashboard";
-  const isMachines = view === "machines";
-  document.querySelector("#dashboard-screen").classList.toggle("hidden-screen", isMachines);
-  document.querySelector("#machines-screen").classList.toggle("hidden-screen", !isMachines);
+  const detailMatch = hash.match(/^#vm\/([^/]+)\/(.+)$/);
+  const view = detailMatch ? "detail" : hash === "#maquinas" ? "machines" : "dashboard";
+  if (commandRoute !== (view === "detail" ? hash : "")) {
+    commandRoute = view === "detail" ? hash : "";
+    commands = [];
+    previousCommandStates = new Map();
+  }
+  if (detailMatch) {
+    try { selectedAgentId = decodeURIComponent(detailMatch[1]); } catch { selectedAgentId = ""; }
+    sessionStorage.setItem("vm_selected_agent", selectedAgentId);
+  }
+  document.querySelector("#dashboard-screen").classList.toggle("hidden-screen", view !== "dashboard");
+  document.querySelector("#machines-screen").classList.toggle("hidden-screen", view !== "machines");
+  document.querySelector("#vm-detail-screen").classList.toggle("hidden-screen", view !== "detail");
   document.querySelectorAll(".nav-link[data-view]").forEach(link => {
-    link.classList.toggle("selected", link.dataset.view === view);
+    link.classList.toggle("selected", link.dataset.view === (view === "detail" ? "machines" : view));
   });
-  document.querySelector("#breadcrumb-current").textContent = view === "machines" ? "Máquinas virtuales" : view === "orders" ? "Órdenes" : "Resumen";
-  if (view === "orders") requestAnimationFrame(() => document.querySelector("#ordenes").scrollIntoView({ behavior: "smooth", block: "start" }));
-  if (isMachines) renderMachines();
+  document.querySelector("#breadcrumb-current").textContent = view === "machines" ? "Máquinas virtuales" : view === "detail" ? "Detalle de máquina" : "Resumen";
+  if (view === "machines") renderMachines();
+  if (view === "detail") renderVmDetails();
+  refresh();
+}
+
+function routeMachine() {
+  const match = window.location.hash.match(/^#vm\/([^/]+)\/(.+)$/);
+  if (!match) return null;
+  try {
+    const agentId = decodeURIComponent(match[1]);
+    const uuid = decodeURIComponent(match[2]);
+    return machines.find(machine => machine.agent_id === agentId && machine.uuid === uuid) || null;
+  } catch { return null; }
+}
+
+function renderVmDetails() {
+  if (!document.querySelector("#vm-detail-screen").classList.contains("hidden-screen")) {
+    const machine = routeMachine();
+    if (!machine) {
+      document.querySelector("#detail-vm-name").textContent = "Máquina no disponible";
+      document.querySelector("#detail-vm-state").textContent = "No se ha encontrado en el inventario del agente.";
+      document.querySelector("#vm-page-actions").innerHTML = "";
+      document.querySelector("#vm-commands-body").innerHTML = '<tr><td colspan="4" class="empty-cell">Cargando inventario de la máquina…</td></tr>';
+      return;
+    }
+    document.querySelector("#detail-vm-name").textContent = machine.name;
+    document.querySelector("#detail-vm-state").innerHTML = `<span class="status-badge ${stateClass(machine.state)}"><i></i>${escapeHtml(stateLabels[machine.state] || machine.state || "Desconocido")}</span>`;
+    document.querySelector("#detail-agent").textContent = machine.agent_name;
+    document.querySelector("#detail-agent-status").textContent = machine.agent_online ? "Conectado" : "Sin señal reciente";
+    document.querySelector("#detail-agent-status").className = machine.agent_online ? "detail-online" : "detail-offline";
+    document.querySelector("#detail-uuid").textContent = machine.uuid;
+    document.querySelector("#detail-last-seen").textContent = relativeTime(machine.last_seen);
+    const actions = availableActions(machine);
+    document.querySelector("#vm-page-actions").innerHTML = actions.length
+      ? actions.map(([action, label, danger]) => `<button class="action-button ${danger ? "danger" : ""}" data-action="${action}" data-agent="${escapeHtml(machine.agent_id)}" data-vm="${escapeHtml(machine.uuid)}" ${machine.agent_online ? "" : "disabled title=\"El agente no tiene conexión reciente\""}>${label}</button>`).join("")
+      : '<span class="detail-no-actions">No hay acciones disponibles para este estado.</span>';
+    document.querySelector("#detail-updated-label").textContent = `Señal ${relativeTime(machine.last_seen).toLowerCase()}`;
+    renderVmCommands();
+  }
 }
 
 async function refresh() {
@@ -238,10 +282,8 @@ async function refresh() {
   const refreshButton = document.querySelector("#refresh-button");
   refreshButton.classList.add("spinning");
   try {
-    const [agentData, commandData] = await Promise.all([api("/api/v1/agents"), api("/api/v1/commands")]);
-    const nextCommandStates = new Map(commandData.map(command => [command.id, command.status]));
+    const agentData = await api("/api/v1/agents");
     agents = agentData;
-    commands = commandData;
     machines = agents.flatMap(agent => (agent.vms || []).map(vm => ({
       ...vm,
       agent_id: agent.agent_id,
@@ -249,6 +291,13 @@ async function refresh() {
       agent_online: online(agent),
       last_seen: agent.last_seen,
     })));
+    const currentMachine = routeMachine();
+    const commandData = currentMachine
+      ? await api(`/api/v1/commands?agent_id=${encodeURIComponent(currentMachine.agent_id)}&vm_uuid=${encodeURIComponent(currentMachine.uuid)}`)
+      : [];
+    if (!currentMachine) previousCommandStates = new Map();
+    const nextCommandStates = new Map(commandData.map(command => [command.id, command.status]));
+    commands = commandData;
     for (const command of commandData) {
       const oldState = previousCommandStates.get(command.id);
       if (oldState && oldState !== command.status && ["success", "failed"].includes(command.status)) {
@@ -283,23 +332,7 @@ async function refresh() {
   }
 }
 
-function openVmDetails(machine) {
-  document.querySelector("#detail-vm-name").textContent = machine.name;
-  document.querySelector("#detail-vm-state").innerHTML = `<span class="status-badge ${stateClass(machine.state)}"><i></i>${escapeHtml(stateLabels[machine.state] || machine.state || "Desconocido")}</span>`;
-  document.querySelector("#detail-agent").textContent = machine.agent_name;
-  document.querySelector("#detail-agent-status").textContent = machine.agent_online ? "Conectado" : "Sin señal reciente";
-  document.querySelector("#detail-agent-status").className = machine.agent_online ? "detail-online" : "detail-offline";
-  document.querySelector("#detail-uuid").textContent = machine.uuid;
-  document.querySelector("#detail-last-seen").textContent = relativeTime(machine.last_seen);
-  const actions = availableActions(machine);
-  document.querySelector("#detail-actions").innerHTML = actions.length
-    ? actions.map(([action, label, danger]) => `<button class="action-button ${danger ? "danger" : ""}" data-action="${action}" data-agent="${escapeHtml(machine.agent_id)}" data-vm="${escapeHtml(machine.uuid)}" ${machine.agent_online ? "" : "disabled title=\"El agente no tiene conexión reciente\""}>${label}</button>`).join("")
-    : '<span class="detail-no-actions">No hay acciones disponibles para este estado.</span>';
-  vmDetailDialog.showModal();
-}
-
 function openAction(machine, action) {
-  if (vmDetailDialog.open) vmDetailDialog.close();
   selectedAction = { machine, action };
   const destructive = action === "poweroff";
   document.querySelector("#action-title").textContent = actionLabels[action];
@@ -317,7 +350,13 @@ document.querySelector("#machines-body").addEventListener("click", event => {
   const detailButton = event.target.closest("button[data-vm-detail]");
   if (detailButton) {
     const machine = machines.find(item => item.uuid === detailButton.dataset.vmDetail && item.agent_id === detailButton.dataset.agent);
-    if (machine) openVmDetails(machine);
+    if (machine) {
+      selectedAgentId = machine.agent_id;
+      sessionStorage.setItem("vm_selected_agent", selectedAgentId);
+      const destination = `#vm/${encodeURIComponent(machine.agent_id)}/${encodeURIComponent(machine.uuid)}`;
+      if (window.location.hash === destination) updateView();
+      else window.location.hash = destination;
+    }
     return;
   }
   const button = event.target.closest("button[data-action]");
@@ -326,7 +365,7 @@ document.querySelector("#machines-body").addEventListener("click", event => {
   if (machine) openAction(machine, button.dataset.action);
 });
 
-document.querySelector("#detail-actions").addEventListener("click", event => {
+document.querySelector("#vm-page-actions").addEventListener("click", event => {
   const button = event.target.closest("button[data-action]");
   if (!button || button.disabled) return;
   const machine = machines.find(item => item.uuid === button.dataset.vm && item.agent_id === button.dataset.agent);
