@@ -3,7 +3,7 @@
 set -e
 
 # Script location:
-# CentralServer/scritps/utils/start-central-dev.sh
+# CentralServer/scripts/utils/start-central-dev.sh
 #
 # Move two directories up to reach CentralServer.
 CENTRAL_DIR="$(

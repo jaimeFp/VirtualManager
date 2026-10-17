@@ -11,7 +11,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from database import Base
+from .database import Base
 
 
 def utc_now() -> datetime:
@@ -122,6 +122,11 @@ class VirtualMachine(Base):
 
     state: Mapped[str] = mapped_column(
         String(50),
+        nullable=False,
+    )
+
+    is_present: Mapped[bool] = mapped_column(
+        default=True,
         nullable=False,
     )
 
