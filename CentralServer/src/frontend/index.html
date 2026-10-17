@@ -25,7 +25,7 @@
       </nav>
       <div class="sidebar-bottom">
         <div class="connection-card"><span class="connection-dot"></span><div><strong>Servidor central</strong><small id="connection-label">Esperando conexión</small></div></div>
-        <button class="sidebar-link" id="settings-button" type="button"><span class="nav-icon">⚙</span>Configuración</button>
+        <button class="sidebar-link" id="settings-button" type="button"><span class="nav-icon">↪</span>Cerrar sesión</button>
         <div class="sidebar-foot">VIRTUALMANAGER <span>v0.1.0</span></div>
       </div>
     </aside>
@@ -33,7 +33,7 @@
     <main class="main-content" id="inicio">
       <header class="topbar">
         <div class="breadcrumbs"><span>Consola</span><span class="crumb-separator">/</span><strong id="breadcrumb-current">Resumen</strong></div>
-        <div class="topbar-right"><span class="live-indicator"><i></i> ACTUALIZACIÓN AUTOMÁTICA</span><span class="topbar-divider"></span><button class="icon-button" id="refresh-button" title="Actualizar ahora" aria-label="Actualizar ahora">↻</button><button class="avatar" id="token-button" title="Configurar credencial">VM</button></div>
+        <div class="topbar-right"><span class="live-indicator"><i></i> ACTUALIZACIÓN AUTOMÁTICA</span><span class="topbar-divider"></span><button class="icon-button" id="refresh-button" title="Actualizar ahora" aria-label="Actualizar ahora">↻</button><span class="avatar" id="user-badge" title="Sesión de usuario">VM</span></div>
       </header>
 
       <section id="dashboard-screen" class="view-screen">
@@ -95,11 +95,10 @@
   </div>
 
   <div class="toast-region" id="toast-region" aria-live="polite"></div>
-  <dialog class="modal" id="token-dialog">
-    <form method="dialog" class="modal-close-row"><button class="modal-close" aria-label="Cerrar">×</button></form>
-    <div class="modal-mark">⌘</div><div class="section-kicker">ACCESO SEGURO</div><h2>Conectar con el servidor</h2><p>Introduce el token de acceso configurado en el servidor central.</p>
-    <form id="token-form"><label for="token-input">Token Bearer</label><input id="token-input" type="password" placeholder="Pega tu token de acceso" autocomplete="off" required><div class="modal-actions"><button class="button-secondary" id="cancel-token" type="button">Cancelar</button><button class="button-primary" type="submit">Conectar <span>→</span></button></div></form>
-    <div class="privacy-note"><span>▣</span> La credencial se guarda solo durante esta sesión del navegador.</div>
+  <dialog class="modal" id="login-dialog">
+    <div class="modal-mark">⌘</div><div class="section-kicker">ACCESO SEGURO</div><h2>Iniciar sesión</h2><p>Introduce tus credenciales para acceder al centro de control.</p>
+    <form id="login-form"><label for="username-input">Usuario</label><input id="username-input" name="username" type="text" autocomplete="username" required><label for="password-input" class="login-password-label">Contraseña</label><input id="password-input" name="password" type="password" autocomplete="current-password" required><p class="login-error" id="login-error" role="alert"></p><div class="modal-actions"><button class="button-primary" type="submit">Entrar <span>→</span></button></div></form>
+    <div class="privacy-note"><span>▣</span> La sesión se cerrará automáticamente tras 8 horas.</div>
   </dialog>
 
   <dialog class="modal action-modal" id="action-dialog">

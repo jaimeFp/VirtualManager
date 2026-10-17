@@ -93,6 +93,28 @@ class AgentCredential(Base):
     )
 
 
+class WebUser(Base):
+    """Local dashboard account; passwords are stored as salted hashes."""
+
+    __tablename__ = "web_users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    username: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
+class WebSession(Base):
+    """Opaque browser session. The cookie value itself is never stored."""
+
+    __tablename__ = "web_sessions"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("web_users.id", ondelete="CASCADE"), nullable=False, index=True)
+    expires_at: Mapped[int] = mapped_column(nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
 class VirtualMachine(Base):
     """!
     @brief Virtual machine database model.

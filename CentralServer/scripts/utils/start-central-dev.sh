@@ -55,6 +55,11 @@ if [ -z "$VIRTUALMANAGER_ADMIN_TOKEN" ] || [ -z "$VIRTUALMANAGER_ENROLLMENT_TOKE
     exit 1
 fi
 
+if [ -z "$VIRTUALMANAGER_WEB_USERNAME" ] || [ -z "$VIRTUALMANAGER_WEB_PASSWORD" ]; then
+    echo "ERROR: VIRTUALMANAGER_WEB_USERNAME and VIRTUALMANAGER_WEB_PASSWORD must be defined."
+    exit 1
+fi
+
 if [ -z "$VIRTUALMANAGER_DATABASE_URL" ]; then
     echo "ERROR: VIRTUALMANAGER_DATABASE_URL is not defined."
     exit 1

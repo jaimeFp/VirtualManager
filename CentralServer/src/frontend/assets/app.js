@@ -1,11 +1,12 @@
 const REFRESH_MS = 5000;
-const tokenDialog = document.querySelector("#token-dialog");
+const loginDialog = document.querySelector("#login-dialog");
 const actionDialog = document.querySelector("#action-dialog");
-const tokenForm = document.querySelector("#token-form");
+const loginForm = document.querySelector("#login-form");
 const toastRegion = document.querySelector("#toast-region");
 const stateLabels = { running: "Encendida", paused: "Pausada", poweroff: "Apagada", saved: "Guardada", aborted: "Interrumpida" };
 const actionLabels = { start: "Iniciar", pause: "Pausar", resume: "Reanudar", shutdown: "Apagar", poweroff: "Forzar apagado" };
-let token = sessionStorage.getItem("vm_api_token") || "";
+let authenticated = false;
+let currentUsername = "";
 let selectedAgentId = sessionStorage.getItem("vm_selected_agent") || "";
 let agents = [];
 let machines = [];
@@ -53,13 +54,15 @@ function relativeTime(value) {
 async function api(path, options = {}) {
   const response = await fetch(path, {
     ...options,
-    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", ...options.headers },
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json", ...options.headers },
   });
   if (response.status === 401) {
-    token = "";
-    sessionStorage.removeItem("vm_api_token");
-    if (!tokenDialog.open) tokenDialog.showModal();
-    throw new Error("Credencial no válida. Introduce de nuevo el token de acceso.");
+    authenticated = false;
+    if (!loginDialog.open) loginDialog.showModal();
+    const error = new Error("La sesión ha caducado. Inicia sesión de nuevo.");
+    error.status = 401;
+    throw error;
   }
   if (!response.ok) {
     let detail = `Error ${response.status}`;
@@ -67,6 +70,25 @@ async function api(path, options = {}) {
     throw new Error(detail);
   }
   return response.json();
+}
+
+function updateUserBadge() {
+  const badge = document.querySelector("#user-badge");
+  badge.textContent = currentUsername.slice(0, 2).toUpperCase() || "VM";
+  badge.title = currentUsername ? `Sesión de ${currentUsername}` : "Sesión de usuario";
+}
+
+async function restoreSession() {
+  try {
+    const session = await api("/api/v1/auth/me");
+    authenticated = true;
+    currentUsername = session.username;
+    updateUserBadge();
+    await refresh();
+  } catch (error) {
+    if (error.status !== 401) notify(error.message, "error");
+    if (!loginDialog.open) loginDialog.showModal();
+  }
 }
 
 function stateClass(state) {
@@ -273,11 +295,7 @@ function renderVmDetails() {
 
 async function refresh() {
   if (refreshing) return;
-  if (!token) {
-    if (!tokenDialog.open) tokenDialog.showModal();
-    document.querySelector("#connection-label").textContent = "Credencial requerida";
-    return;
-  }
+  if (!authenticated) return;
   refreshing = true;
   const refreshButton = document.querySelector("#refresh-button");
   refreshButton.classList.add("spinning");
@@ -324,7 +342,7 @@ async function refresh() {
     document.querySelector("#updated-label").classList.add("stale-data");
     document.querySelector("#machines-updated-label").textContent = "Sin conexión · datos anteriores";
     document.querySelector("#machines-updated-label").classList.add("stale-data");
-    if (error.message !== lastError) notify(error.message, "error");
+    if (error.status !== 401 && error.message !== lastError) notify(error.message, "error");
     lastError = error.message;
   } finally {
     refreshing = false;
@@ -404,12 +422,15 @@ document.querySelector("#confirm-action").addEventListener("click", async () => 
   }
 });
 
-document.querySelector("#token-button").addEventListener("click", () => {
-  document.querySelector("#token-input").value = token;
-  tokenDialog.showModal();
+document.querySelector("#settings-button").addEventListener("click", async () => {
+  try { await api("/api/v1/auth/logout", { method: "POST" }); } catch { /* La sesión puede haber caducado. */ }
+  authenticated = false;
+  currentUsername = "";
+  updateUserBadge();
+  commands = [];
+  previousCommandStates = new Map();
+  if (!loginDialog.open) loginDialog.showModal();
 });
-document.querySelector("#settings-button").addEventListener("click", () => document.querySelector("#token-button").click());
-document.querySelector("#cancel-token").addEventListener("click", () => tokenDialog.close());
 document.querySelector("#cancel-action").addEventListener("click", () => actionDialog.close());
 document.querySelector("#refresh-button").addEventListener("click", refresh);
 const filterControls = ["#machine-search", "#state-filter", "#machine-sort"].map(selector => document.querySelector(selector));
@@ -438,16 +459,34 @@ document.querySelector("#agent-selector").addEventListener("change", event => {
   renderMachines();
 });
 window.addEventListener("hashchange", updateView);
-tokenForm.addEventListener("submit", event => {
+loginForm.addEventListener("submit", async event => {
   event.preventDefault();
-  token = document.querySelector("#token-input").value.trim();
-  sessionStorage.setItem("vm_api_token", token);
-  tokenDialog.close();
-  lastError = "";
-  refresh();
+  const errorLabel = document.querySelector("#login-error");
+  const submitButton = loginForm.querySelector("button[type=submit]");
+  errorLabel.textContent = "";
+  submitButton.disabled = true;
+  try {
+    const session = await api("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({
+        username: document.querySelector("#username-input").value,
+        password: document.querySelector("#password-input").value,
+      }),
+    });
+    authenticated = true;
+    currentUsername = session.username;
+    updateUserBadge();
+    loginForm.reset();
+    loginDialog.close();
+    lastError = "";
+    await refresh();
+  } catch (error) {
+    errorLabel.textContent = error.status === 401 ? "Usuario o contraseña incorrectos." : error.message;
+  } finally {
+    submitButton.disabled = false;
+  }
 });
 
-if (!token) tokenDialog.showModal();
 try {
   const saved = JSON.parse(sessionStorage.getItem("vm_machine_filters") || "{}");
   filterControls[0].value = saved.query || "";
@@ -455,5 +494,5 @@ try {
   filterControls[2].value = ["name", "state"].includes(saved.sort) ? saved.sort : "name";
 } catch { sessionStorage.removeItem("vm_machine_filters"); }
 updateView();
-refresh();
+restoreSession();
 setInterval(refresh, REFRESH_MS);

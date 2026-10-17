@@ -1,15 +1,16 @@
 import hashlib
 import os
 import secrets
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .database import Base, engine, get_database
@@ -25,11 +26,48 @@ FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend")
 app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIR, "assets")), name="assets")
 ADMIN_TOKEN = os.environ.get("VIRTUALMANAGER_ADMIN_TOKEN")
 ENROLLMENT_TOKEN = os.environ.get("VIRTUALMANAGER_ENROLLMENT_TOKEN")
+WEB_USERNAME = os.environ.get("VIRTUALMANAGER_WEB_USERNAME", "").strip().lower()
+WEB_PASSWORD = os.environ.get("VIRTUALMANAGER_WEB_PASSWORD", "")
+WEB_SESSION_COOKIE = "vm_session"
+WEB_SESSION_TTL = 8 * 60 * 60
 
 if not ADMIN_TOKEN or not ENROLLMENT_TOKEN:
     raise RuntimeError("VIRTUALMANAGER_ADMIN_TOKEN and VIRTUALMANAGER_ENROLLMENT_TOKEN must be set.")
 if secrets.compare_digest(ADMIN_TOKEN, ENROLLMENT_TOKEN):
     raise RuntimeError("Admin and enrollment credentials must be different.")
+if not WEB_USERNAME or not WEB_PASSWORD:
+    raise RuntimeError("VIRTUALMANAGER_WEB_USERNAME and VIRTUALMANAGER_WEB_PASSWORD must be set.")
+if len(WEB_PASSWORD) < 12:
+    raise RuntimeError("VIRTUALMANAGER_WEB_PASSWORD must contain at least 12 characters.")
+
+
+def hash_password(password: str, salt: bytes | None = None) -> str:
+    salt = salt or secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 600_000)
+    return f"pbkdf2_sha256$600000${salt.hex()}${digest.hex()}"
+
+
+def verify_password(password: str, encoded: str) -> bool:
+    try:
+        algorithm, rounds, salt_hex, digest_hex = encoded.split("$", 3)
+        if algorithm != "pbkdf2_sha256":
+            return False
+        digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt_hex), int(rounds))
+        return secrets.compare_digest(digest.hex(), digest_hex)
+    except (ValueError, TypeError):
+        return False
+
+
+def token_digest(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+DUMMY_PASSWORD_HASH = hash_password("constant-time-placeholder", b"virtualmanagerdummy")
+
+with Session(engine) as bootstrap_database:
+    if bootstrap_database.scalar(select(models.WebUser.id).limit(1)) is None:
+        bootstrap_database.add(models.WebUser(username=WEB_USERNAME, password_hash=hash_password(WEB_PASSWORD)))
+        bootstrap_database.commit()
 
 
 class AgentRegistration(BaseModel):
@@ -54,9 +92,95 @@ class CommandResult(BaseModel):
     error: str | None = None
 
 
+class LoginCredentials(BaseModel):
+    username: str
+    password: str
+
+
 @app.get("/", include_in_schema=False)
 def frontend() -> FileResponse:
     return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+
+
+def authenticate_user(
+    request: Request,
+    database: Session = Depends(get_database),
+) -> models.WebUser:
+    token = request.cookies.get(WEB_SESSION_COOKIE)
+    if not token:
+        raise HTTPException(status_code=401, detail="Login required.")
+    session_record = database.get(models.WebSession, token_digest(token))
+    if session_record is None:
+        raise HTTPException(status_code=401, detail="Session expired.")
+    if session_record.expires_at <= int(time.time()):
+        database.delete(session_record)
+        database.commit()
+        raise HTTPException(status_code=401, detail="Session expired.")
+    user = database.get(models.WebUser, session_record.user_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Login required.")
+    return user
+
+
+@app.post("/api/v1/auth/login")
+def login(
+    credentials: LoginCredentials,
+    response: Response,
+    database: Session = Depends(get_database),
+) -> dict[str, str]:
+    username = credentials.username.strip().lower()
+    user = database.scalar(select(models.WebUser).where(models.WebUser.username == username))
+    # Run the same password KDF for unknown users to reduce username timing leaks.
+    valid = verify_password(credentials.password, user.password_hash if user else DUMMY_PASSWORD_HASH)
+    if not valid or user is None:
+        raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos.")
+
+    now = int(time.time())
+    database.execute(delete(models.WebSession).where(models.WebSession.expires_at <= now))
+    session_token = secrets.token_urlsafe(32)
+    database.add(models.WebSession(
+        token_hash=token_digest(session_token),
+        user_id=user.id,
+        expires_at=now + WEB_SESSION_TTL,
+    ))
+    database.commit()
+    response.set_cookie(
+        key=WEB_SESSION_COOKIE,
+        value=session_token,
+        max_age=WEB_SESSION_TTL,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        path="/api/v1",
+    )
+    return {"username": user.username}
+
+
+@app.get("/api/v1/auth/me")
+def current_user(user: models.WebUser = Depends(authenticate_user)) -> dict[str, str]:
+    return {"username": user.username}
+
+
+@app.post("/api/v1/auth/logout")
+def logout(
+    request: Request,
+    response: Response,
+    database: Session = Depends(get_database),
+) -> dict[str, str]:
+    token = request.cookies.get(WEB_SESSION_COOKIE)
+    if token:
+        session_record = database.get(models.WebSession, token_digest(token))
+        if session_record is not None:
+            database.delete(session_record)
+            database.commit()
+    response.delete_cookie(
+        key=WEB_SESSION_COOKIE,
+        path="/api/v1",
+        secure=True,
+        httponly=True,
+        samesite="strict",
+    )
+    return {"status": "logged_out"}
 
 
 def bearer_token(authorization: str | None) -> str:
@@ -160,7 +284,7 @@ def rotate_agent_credential(agent_id: str, database: Session = Depends(get_datab
     return {"agent_id": agent_id, "agent_token": issued_token}
 
 
-@app.get("/api/v1/agents", dependencies=[Depends(authenticate_admin)])
+@app.get("/api/v1/agents", dependencies=[Depends(authenticate_user)])
 def get_agents(database: Session = Depends(get_database)) -> list[dict[str, Any]]:
     agents = database.scalars(select(models.Agent).order_by(models.Agent.hostname)).all()
     result = []
@@ -258,7 +382,7 @@ def get_next_command(
     }
 
 
-@app.post("/api/v1/commands", dependencies=[Depends(authenticate_admin)])
+@app.post("/api/v1/commands", dependencies=[Depends(authenticate_user)])
 def create_command(request: CommandCreation, database: Session = Depends(get_database)) -> dict[str, Any]:
     require_agent(request.agent_id, database)
     vm = database.scalar(
@@ -308,7 +432,7 @@ def command_as_dict(command: models.Command, vm_uuid: str) -> dict[str, Any]:
     }
 
 
-@app.get("/api/v1/commands", dependencies=[Depends(authenticate_admin)])
+@app.get("/api/v1/commands", dependencies=[Depends(authenticate_user)])
 def get_all_commands(
     agent_id: str | None = Query(default=None),
     vm_uuid: str | None = Query(default=None),
@@ -325,7 +449,7 @@ def get_all_commands(
     return [command_as_dict(command, machine_uuid) for command, machine_uuid in rows]
 
 
-@app.get("/api/v1/commands/{command_id}", dependencies=[Depends(authenticate_admin)])
+@app.get("/api/v1/commands/{command_id}", dependencies=[Depends(authenticate_user)])
 def get_command(command_id: str, database: Session = Depends(get_database)) -> dict[str, Any]:
     command = database.get(models.Command, command_id)
     if command is None:
