@@ -133,7 +133,7 @@
     <div class="modal-mark agent-access-mark">⚙</div><div class="section-kicker">RECURSOS Y CONECTIVIDAD</div><h2>Configurar máquina</h2><p>Los cambios se aplicarán cuando el agente reciba la orden.</p>
     <form id="vm-config-form" class="vm-config-form">
       <div class="vm-config-fields"><label>Memoria RAM (MB)<input name="memory_mb" type="number" min="4" max="1048576" step="1" required></label><label>Núcleos de CPU<input name="cpu_count" type="number" min="1" max="256" step="1" required></label></div>
-      <div class="network-config-heading"><strong>Interfaces de red</strong><span>Activa las interfaces que necesites</span></div>
+      <div class="network-config-heading"><strong>Interfaces de red (tarjetas virtuales)</strong><span>Cada NIC es una tarjeta de red virtual de la máquina. Activa las que necesites y elige cómo se conectan.</span></div>
       <div id="network-config-list" class="network-config-list"></div>
       <div class="modal-actions"><button class="button-secondary" id="cancel-vm-config" type="button">Cancelar</button><button class="button-primary" id="save-vm-config" type="submit">Enviar configuración <span>→</span></button></div>
     </form>
