@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101b2b">
+  <title>VirtualManager · Consola</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="#inicio" aria-label="VirtualManager inicio">
+        <span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 9.5 16 4l11 5.5v13L16 28 5 22.5z"/><path d="m5.5 9.7 10.5 5.5 10.5-5.5M16 15.2V27"/></svg></span>
+        <span class="brand-name">virtual<span>manager</span></span>
+      </a>
+      <div class="workspace-label">ÁREA DE TRABAJO</div>
+      <nav class="navigation" aria-label="Navegación principal">
+        <a class="nav-link selected" href="#inicio"><span class="nav-icon">▦</span>Resumen</a>
+        <a class="nav-link" href="#maquinas"><span class="nav-icon">▤</span>Máquinas virtuales</a>
+        <a class="nav-link" href="#ordenes"><span class="nav-icon">↗</span>Órdenes</a>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="connection-card"><span class="connection-dot"></span><div><strong>Servidor central</strong><small id="connection-label">Esperando conexión</small></div></div>
+        <button class="sidebar-link" id="settings-button" type="button"><span class="nav-icon">⚙</span>Configuración</button>
+        <div class="sidebar-foot">VIRTUALMANAGER <span>v0.1.0</span></div>
+      </div>
+    </aside>
+
+    <main class="main-content" id="inicio">
+      <header class="topbar">
+        <div class="breadcrumbs"><span>Consola</span><span class="crumb-separator">/</span><strong>Resumen</strong></div>
+        <div class="topbar-right"><span class="live-indicator"><i></i> ACTUALIZACIÓN AUTOMÁTICA</span><span class="topbar-divider"></span><button class="icon-button" id="refresh-button" title="Actualizar ahora" aria-label="Actualizar ahora">↻</button><button class="avatar" id="token-button" title="Configurar credencial">VM</button></div>
+      </header>
+
+      <section class="page-heading">
+        <div><div class="eyebrow"><span></span> CENTRO DE CONTROL</div><h1>Resumen</h1><p>Supervisa tus agentes y máquinas virtuales desde un único lugar.</p></div>
+        <div class="updated"><span class="updated-dot"></span><span id="updated-label">Sin sincronizar</span></div>
+      </section>
+
+      <section class="stats-grid" aria-label="Resumen de estado">
+        <article class="stat-card"><div class="stat-top"><span>Agentes registrados</span><span class="stat-icon purple">⌘</span></div><div class="stat-value" id="stat-agents">—</div><div class="stat-foot"><span class="mini-dot purple-dot"></span><span id="stat-agents-foot">Esperando datos</span></div></article>
+        <article class="stat-card"><div class="stat-top"><span>Agentes conectados</span><span class="stat-icon green">⌁</span></div><div class="stat-value" id="stat-online">—</div><div class="stat-foot"><span class="mini-dot green-dot"></span><span>Vistos en los últimos 30 segundos</span></div></article>
+        <article class="stat-card"><div class="stat-top"><span>Máquinas virtuales</span><span class="stat-icon blue">▤</span></div><div class="stat-value" id="stat-vms">—</div><div class="stat-foot"><span class="state-summary"><i class="running-dot"></i><span id="stat-running">—</span> encendidas</span></div></article>
+        <article class="stat-card"><div class="stat-top"><span>Órdenes pendientes</span><span class="stat-icon amber">↗</span></div><div class="stat-value" id="stat-commands">—</div><div class="stat-foot"><span class="mini-dot amber-dot"></span><span>En espera o en ejecución</span></div></article>
+      </section>
+
+      <section class="content-grid">
+        <article class="panel machines-panel" id="maquinas">
+          <div class="panel-heading"><div><div class="section-kicker">INFRAESTRUCTURA</div><h2>Máquinas virtuales</h2></div><button class="text-button" id="show-machines">Ver todas <span>→</span></button></div>
+          <div class="filter-row"><label class="search-box"><span>⌕</span><input id="machine-search" type="search" placeholder="Buscar máquina o agente…" autocomplete="off"></label><div class="filter-select-wrap"><select id="state-filter" aria-label="Filtrar por estado"><option value="all">Todos los estados</option><option value="running">Encendidas</option><option value="paused">Pausadas</option><option value="poweroff">Apagadas</option><option value="other">Otros</option></select><span>⌄</span></div></div>
+          <div class="table-scroll"><table><thead><tr><th>MÁQUINA</th><th>AGENTE</th><th>ESTADO</th><th>ÚLTIMA ACTIVIDAD</th><th></th></tr></thead><tbody id="machines-body"><tr><td colspan="5" class="empty-cell"><span class="loader"></span><br>Conectando con el servidor…</td></tr></tbody></table></div>
+          <div class="table-footer"><span id="machine-count">0 máquinas</span><span class="table-note"><i></i> Datos en tiempo real</span></div>
+        </article>
+
+        <aside class="panel agents-panel">
+          <div class="panel-heading"><div><div class="section-kicker">DISPOSITIVOS</div><h2>Agentes</h2></div><span class="count-pill" id="agent-count">0</span></div>
+          <div class="agent-list" id="agent-list"><div class="empty-agents">Los agentes aparecerán aquí al conectarse.</div></div>
+          <div class="agent-panel-footer"><span class="footer-pulse"></span> Supervisión activa</div>
+        </aside>
+      </section>
+
+      <section class="panel commands-panel" id="ordenes">
+        <div class="panel-heading"><div><div class="section-kicker">ACTIVIDAD RECIENTE</div><h2>Órdenes</h2></div><span class="subtle-label">Últimas 20</span></div>
+        <div class="table-scroll"><table><thead><tr><th>ACCIÓN</th><th>MÁQUINA</th><th>AGENTE</th><th>ESTADO</th><th>FECHA</th></tr></thead><tbody id="commands-body"><tr><td colspan="5" class="empty-cell">Cargando órdenes…</td></tr></tbody></table></div>
+      </section>
+      <footer class="page-footer"><span>VirtualManager <span class="footer-separator">·</span> Consola de monitorización</span><span>Los datos se actualizan cada 5 segundos</span></footer>
+    </main>
+  </div>
+
+  <div class="toast-region" id="toast-region" aria-live="polite"></div>
+  <dialog class="modal" id="token-dialog">
+    <form method="dialog" class="modal-close-row"><button class="modal-close" aria-label="Cerrar">×</button></form>
+    <div class="modal-mark">⌘</div><div class="section-kicker">ACCESO SEGURO</div><h2>Conectar con el servidor</h2><p>Introduce el token de acceso configurado en el servidor central.</p>
+    <form id="token-form"><label for="token-input">Token Bearer</label><input id="token-input" type="password" placeholder="Pega tu token de acceso" autocomplete="off" required><div class="modal-actions"><button class="button-secondary" id="cancel-token" type="button">Cancelar</button><button class="button-primary" type="submit">Conectar <span>→</span></button></div></form>
+    <div class="privacy-note"><span>▣</span> La credencial se guarda solo durante esta sesión del navegador.</div>
+  </dialog>
+
+  <dialog class="modal action-modal" id="action-dialog">
+    <form method="dialog" class="modal-close-row"><button class="modal-close" aria-label="Cerrar">×</button></form>
+    <div class="modal-mark action-mark">↗</div><div class="section-kicker">CONTROL REMOTO</div><h2 id="action-title">Enviar orden</h2><p id="action-description">Confirma la acción para esta máquina.</p>
+    <div class="target-machine"><span class="vm-glyph">▤</span><span><strong id="action-vm-name"></strong><small id="action-vm-agent"></small></span></div>
+    <div class="modal-actions"><button class="button-secondary" id="cancel-action" type="button">Cancelar</button><button class="button-primary" id="confirm-action" type="button">Enviar orden <span>→</span></button></div>
+  </dialog>
+</body>
+</html>

@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -18,6 +20,8 @@ from . import models
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="VirtualManager Central Server", version="0.1.0")
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend")
+app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIR, "assets")), name="assets")
 AGENT_TOKEN = os.environ.get("VIRTUALMANAGER_AGENT_TOKEN")
 
 if not AGENT_TOKEN:
@@ -44,6 +48,11 @@ class CommandCreation(BaseModel):
 class CommandResult(BaseModel):
     status: str
     error: str | None = None
+
+
+@app.get("/", include_in_schema=False)
+def frontend() -> FileResponse:
+    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
 
 def authenticate_agent(authorization: str | None = Header(default=None)) -> None:
