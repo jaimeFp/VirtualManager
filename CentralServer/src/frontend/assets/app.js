@@ -10,6 +10,8 @@ let authenticated = false;
 let currentUsername = "";
 let currentRole = "";
 let selectedAgentId = sessionStorage.getItem("vm_selected_agent") || "";
+let managementAgents = [];
+const pendingAgentScopes = new Map();
 let agents = [];
 let machines = [];
 let commands = [];
@@ -305,17 +307,48 @@ function renderVmDetails() {
 async function loadUsers() {
   if (currentRole !== "admin") return;
   try {
-    const users = await api("/api/v1/users");
-    document.querySelector("#users-body").innerHTML = users.map(user => `<tr><td><strong>${escapeHtml(user.username)}</strong></td><td><select aria-label="Rol de ${escapeHtml(user.username)}" data-user-role="${escapeHtml(user.id)}"><option value="admin" ${user.role === "admin" ? "selected" : ""}>Administrador</option><option value="operator" ${user.role === "operator" ? "selected" : ""}>Operador</option><option value="observer" ${user.role === "observer" ? "selected" : ""}>Observador</option></select></td><td><select aria-label="Acceso de ${escapeHtml(user.username)}" data-user-active="${escapeHtml(user.id)}"><option value="true" ${user.is_active ? "selected" : ""}>Puede iniciar sesión</option><option value="false" ${!user.is_active ? "selected" : ""}>Acceso bloqueado</option></select></td><td><button class="text-button" data-save-user="${escapeHtml(user.id)}">Guardar</button></td></tr>`).join("");
+    const [users, agents] = await Promise.all([api("/api/v1/users"), api("/api/v1/agents")]);
+    managementAgents = agents;
+    pendingAgentScopes.clear();
+    document.querySelector("#users-body").innerHTML = users.map(user => {
+      const selectedAgents = new Set(user.agent_ids || []);
+      pendingAgentScopes.set(user.id, [...selectedAgents]);
+      const agentControl = renderAgentAccess(user.id, user.role, selectedAgents);
+      return `<tr><td><strong>${escapeHtml(user.username)}</strong></td><td><select aria-label="Rol de ${escapeHtml(user.username)}" data-user-role="${escapeHtml(user.id)}"><option value="admin" ${user.role === "admin" ? "selected" : ""}>Administrador</option><option value="operator" ${user.role === "operator" ? "selected" : ""}>Operador</option><option value="observer" ${user.role === "observer" ? "selected" : ""}>Observador</option></select></td><td><select aria-label="Acceso de ${escapeHtml(user.username)}" data-user-active="${escapeHtml(user.id)}"><option value="true" ${user.is_active ? "selected" : ""}>Puede iniciar sesión</option><option value="false" ${!user.is_active ? "selected" : ""}>Acceso bloqueado</option></select></td><td>${agentControl}</td><td><button class="text-button" data-save-user="${escapeHtml(user.id)}">Guardar</button></td></tr>`;
+    }).join("");
   } catch (error) { notify(error.message, "error"); }
 }
+
+function renderAgentAccess(userId, role, selectedAgents) {
+  if (role === "admin") return '<span class="global-agent-access">Todos los agentes</span>';
+  if (!managementAgents.length) return '<span class="global-agent-access">No hay agentes</span>';
+  return `<details class="agent-access-picker"><summary>${selectedAgents.size} de ${managementAgents.length}</summary><div class="agent-access-options">${managementAgents.map(agent => `<label><input type="checkbox" data-user-agent="${escapeHtml(userId)}" value="${escapeHtml(agent.agent_id)}" ${selectedAgents.has(agent.agent_id) ? "checked" : ""}><span>${escapeHtml(agent.hostname)}</span></label>`).join("")}</div></details>`;
+}
+
+document.querySelector("#users-body").addEventListener("change", event => {
+  const row = event.target.closest("tr");
+  if (!row) return;
+  const roleSelect = event.target.closest("[data-user-role]");
+  const changedCheckbox = event.target.closest("[data-user-agent]");
+  if (!roleSelect && !changedCheckbox) return;
+  const userId = (roleSelect || changedCheckbox).dataset.userRole || (roleSelect || changedCheckbox).dataset.userAgent;
+  const checked = [...row.querySelectorAll(`[data-user-agent="${CSS.escape(userId)}"]:checked`)].map(input => input.value);
+  const selectedAgents = new Set(checked.length || row.querySelector(`[data-user-agent="${CSS.escape(userId)}"]`)
+    ? checked
+    : (pendingAgentScopes.get(userId) || []));
+  pendingAgentScopes.set(userId, [...selectedAgents]);
+  if (roleSelect) row.cells[3].innerHTML = renderAgentAccess(userId, roleSelect.value, selectedAgents);
+  else row.querySelector(".agent-access-picker summary").textContent = `${selectedAgents.size} de ${managementAgents.length}`;
+});
 
 document.querySelector("#users-body").addEventListener("click", async event => {
   const button = event.target.closest("[data-save-user]");
   if (!button) return;
   const id = button.dataset.saveUser;
   try {
-    await api(`/api/v1/users/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ role: document.querySelector(`[data-user-role="${CSS.escape(id)}"]`).value, is_active: document.querySelector(`[data-user-active="${CSS.escape(id)}"]`).value === "true" }) });
+    const role = document.querySelector(`[data-user-role="${CSS.escape(id)}"]`).value;
+    const agentIds = [...(pendingAgentScopes.get(id) || [])];
+    await api(`/api/v1/users/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ role, is_active: document.querySelector(`[data-user-active="${CSS.escape(id)}"]`).value === "true", agent_ids: agentIds }) });
     notify("Permisos actualizados.");
     await loadUsers();
   } catch (error) { notify(error.message, "error"); }

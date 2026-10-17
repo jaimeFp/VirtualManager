@@ -106,6 +106,19 @@ class WebUser(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
 
 
+class WebUserAgentAccess(Base):
+    """Agent access granted to a non-admin dashboard user."""
+
+    __tablename__ = "web_user_agent_access"
+
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("web_users.id", ondelete="CASCADE"), primary_key=True
+    )
+    agent_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
 class WebSession(Base):
     """Opaque browser session. The cookie value itself is never stored."""
 

@@ -140,6 +140,7 @@ class UserCreation(BaseModel):
 class UserUpdate(BaseModel):
     role: str | None = None
     is_active: bool | None = None
+    agent_ids: list[str] | None = None
 
 
 @app.get("/", include_in_schema=False)
@@ -175,6 +176,21 @@ def require_roles(*allowed_roles: str):
             raise HTTPException(status_code=403, detail="Your account does not have permission for this action.")
         return user
     return dependency
+
+
+def user_agent_ids(database: Session, user: models.WebUser) -> list[str]:
+    return list(database.scalars(
+        select(models.WebUserAgentAccess.agent_id).where(
+            models.WebUserAgentAccess.user_id == user.id
+        )
+    ).all())
+
+
+def require_agent_access(database: Session, user: models.WebUser, agent_id: str) -> None:
+    if user.role == "admin":
+        return
+    if agent_id not in user_agent_ids(database, user):
+        raise HTTPException(status_code=403, detail="Your account does not have access to this agent.")
 
 
 @app.post("/api/v1/auth/login")
@@ -333,9 +349,15 @@ def rotate_agent_credential(agent_id: str, database: Session = Depends(get_datab
     return {"agent_id": agent_id, "agent_token": issued_token}
 
 
-@app.get("/api/v1/agents", dependencies=[Depends(authenticate_user)])
-def get_agents(database: Session = Depends(get_database)) -> list[dict[str, Any]]:
+@app.get("/api/v1/agents")
+def get_agents(
+    user: models.WebUser = Depends(authenticate_user),
+    database: Session = Depends(get_database),
+) -> list[dict[str, Any]]:
     agents = database.scalars(select(models.Agent).order_by(models.Agent.hostname)).all()
+    if user.role != "admin":
+        permitted_agent_ids = set(user_agent_ids(database, user))
+        agents = [agent for agent in agents if agent.id in permitted_agent_ids]
     result = []
     for agent in agents:
         vms = database.scalars(
@@ -355,20 +377,21 @@ def get_agents(database: Session = Depends(get_database)) -> list[dict[str, Any]
     return result
 
 
-def user_as_dict(user: models.WebUser) -> dict[str, Any]:
+def user_as_dict(user: models.WebUser, database: Session) -> dict[str, Any]:
     return {
         "id": user.id,
         "username": user.username,
         "role": user.role,
         "is_active": user.is_active,
         "created_at": user.created_at.isoformat(),
+        "agent_ids": user_agent_ids(database, user),
     }
 
 
 @app.get("/api/v1/users", dependencies=[Depends(require_roles("admin"))])
 def list_users(database: Session = Depends(get_database)) -> list[dict[str, Any]]:
     users = database.scalars(select(models.WebUser).order_by(models.WebUser.username)).all()
-    return [user_as_dict(user) for user in users]
+    return [user_as_dict(user, database) for user in users]
 
 
 @app.post("/api/v1/users", dependencies=[Depends(require_roles("admin"))], status_code=201)
@@ -391,7 +414,7 @@ def create_user(request: UserCreation, database: Session = Depends(get_database)
     database.add(user)
     database.commit()
     database.refresh(user)
-    return user_as_dict(user)
+    return user_as_dict(user, database)
 
 
 @app.patch("/api/v1/users/{user_id}", dependencies=[Depends(require_roles("admin"))])
@@ -407,10 +430,16 @@ def update_user(
     fields = request.__fields_set__
     role = request.role if "role" in fields else user.role
     is_active = request.is_active if "is_active" in fields else user.is_active
+    agent_ids = request.agent_ids if "agent_ids" in fields else None
     if role is not None and role not in {"admin", "operator", "observer"}:
         raise HTTPException(status_code=422, detail="Role must be admin, operator or observer.")
     if is_active is None:
         is_active = user.is_active
+    if agent_ids is not None:
+        agent_ids = list(dict.fromkeys(agent_ids))
+        known_agent_ids = set(database.scalars(select(models.Agent.id).where(models.Agent.id.in_(agent_ids))).all()) if agent_ids else set()
+        if known_agent_ids != set(agent_ids):
+            raise HTTPException(status_code=422, detail="One or more selected agents do not exist.")
     if current.id == user.id and (role != user.role or not is_active):
         raise HTTPException(status_code=409, detail="You cannot remove administrator access from your own account.")
     if user.role == "admin" and user.is_active and (role != "admin" or not is_active):
@@ -420,14 +449,24 @@ def update_user(
         if len(active_admins) <= 1:
             raise HTTPException(status_code=409, detail="At least one active administrator is required.")
 
+    previous_agent_ids = set(user_agent_ids(database, user))
+    next_agent_ids = (set(agent_ids) if agent_ids is not None else previous_agent_ids) if role != "admin" else set()
+    agent_access_changed = previous_agent_ids != next_agent_ids
     access_changed = role != user.role or is_active != user.is_active
     user.role = role or user.role
     user.is_active = is_active
-    if access_changed:
+    if agent_ids is not None or user.role == "admin":
+        database.execute(delete(models.WebUserAgentAccess).where(models.WebUserAgentAccess.user_id == user.id))
+        if user.role != "admin":
+            database.add_all([
+                models.WebUserAgentAccess(user_id=user.id, agent_id=agent_id)
+                for agent_id in (agent_ids or [])
+            ])
+    if access_changed or agent_access_changed:
         database.execute(delete(models.WebSession).where(models.WebSession.user_id == user.id))
     database.commit()
     database.refresh(user)
-    return user_as_dict(user)
+    return user_as_dict(user, database)
 
 
 @app.put("/api/v1/agents/{agent_id}/vms")
@@ -506,8 +545,13 @@ def get_next_command(
     }
 
 
-@app.post("/api/v1/commands", dependencies=[Depends(require_roles("admin", "operator"))])
-def create_command(request: CommandCreation, database: Session = Depends(get_database)) -> dict[str, Any]:
+@app.post("/api/v1/commands")
+def create_command(
+    request: CommandCreation,
+    user: models.WebUser = Depends(require_roles("admin", "operator")),
+    database: Session = Depends(get_database),
+) -> dict[str, Any]:
+    require_agent_access(database, user, request.agent_id)
     require_agent(request.agent_id, database)
     vm = database.scalar(
         select(models.VirtualMachine).where(
@@ -556,28 +600,40 @@ def command_as_dict(command: models.Command, vm_uuid: str) -> dict[str, Any]:
     }
 
 
-@app.get("/api/v1/commands", dependencies=[Depends(authenticate_user)])
+@app.get("/api/v1/commands")
 def get_all_commands(
     agent_id: str | None = Query(default=None),
     vm_uuid: str | None = Query(default=None),
+    user: models.WebUser = Depends(authenticate_user),
     database: Session = Depends(get_database),
 ) -> list[dict[str, Any]]:
     statement = select(models.Command, models.VirtualMachine.uuid).join(
         models.VirtualMachine, models.Command.vm_id == models.VirtualMachine.id
     )
     if agent_id:
+        require_agent_access(database, user, agent_id)
         statement = statement.where(models.Command.agent_id == agent_id)
+    elif user.role != "admin":
+        permitted_agent_ids = user_agent_ids(database, user)
+        if not permitted_agent_ids:
+            return []
+        statement = statement.where(models.Command.agent_id.in_(permitted_agent_ids))
     if vm_uuid:
         statement = statement.where(models.VirtualMachine.uuid == vm_uuid)
     rows = database.execute(statement.order_by(models.Command.created_at.desc())).all()
     return [command_as_dict(command, machine_uuid) for command, machine_uuid in rows]
 
 
-@app.get("/api/v1/commands/{command_id}", dependencies=[Depends(authenticate_user)])
-def get_command(command_id: str, database: Session = Depends(get_database)) -> dict[str, Any]:
+@app.get("/api/v1/commands/{command_id}")
+def get_command(
+    command_id: str,
+    user: models.WebUser = Depends(authenticate_user),
+    database: Session = Depends(get_database),
+) -> dict[str, Any]:
     command = database.get(models.Command, command_id)
     if command is None:
         raise HTTPException(status_code=404, detail="Command not found.")
+    require_agent_access(database, user, command.agent_id)
     vm = database.get(models.VirtualMachine, command.vm_id)
     return command_as_dict(command, vm.uuid)
 

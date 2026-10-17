@@ -96,10 +96,11 @@
         <section class="page-heading"><div><div class="eyebrow"><span></span> ADMINISTRACIÓN</div><h1>Usuarios</h1><p>Gestiona cuentas y permisos de acceso al panel.</p></div></section>
         <section class="panel user-management">
           <div class="panel-heading"><div><div class="section-kicker">CUENTAS</div><h2>Usuarios del sistema</h2></div></div>
-          <div class="table-scroll"><table><thead><tr><th>USUARIO</th><th>ROL</th><th>ACCESO A LA CUENTA</th><th></th></tr></thead><tbody id="users-body"><tr><td colspan="4" class="empty-cell">Cargando usuarios…</td></tr></tbody></table></div>
+          <div class="table-scroll"><table><thead><tr><th>USUARIO</th><th>ROL</th><th>ACCESO A LA CUENTA</th><th>AGENTES PERMITIDOS</th><th></th></tr></thead><tbody id="users-body"><tr><td colspan="5" class="empty-cell">Cargando usuarios…</td></tr></tbody></table></div>
         </section>
         <section class="panel user-form-panel">
           <div class="panel-heading"><div><div class="section-kicker">NUEVA CUENTA</div><h2>Crear usuario</h2></div></div>
+          <p class="user-access-help">Después de crearla, asigna los agentes que podrá consultar el observador o controlar el operador.</p>
           <form id="user-create-form" class="user-form"><label>Nombre de usuario<input name="username" minlength="3" maxlength="80" autocomplete="off" required></label><label>Contraseña inicial<input name="password" type="password" autocomplete="new-password" aria-describedby="user-password-feedback" required><small id="user-password-feedback" class="password-feedback" aria-live="polite"></small></label><label>Rol<select name="role"><option value="observer">Observador</option><option value="operator">Operador</option><option value="admin">Administrador</option></select></label><button class="button-primary" type="submit">Crear usuario <span>→</span></button></form>
         </section>
       </section>
