@@ -311,6 +311,7 @@ async function loadUsers() {
   try {
     const [users, agents] = await Promise.all([api("/api/v1/users"), api("/api/v1/agents")]);
     managementAgents = agents;
+    renderCreateAgentOptions();
     pendingAgentScopes.clear();
     document.querySelector("#users-body").innerHTML = users.map(user => {
       const selectedAgents = new Set(user.agent_ids || []);
@@ -390,6 +391,28 @@ document.querySelector("#save-agent-access").addEventListener("click", async () 
 });
 
 const userCreateForm = document.querySelector("#user-create-form");
+const createAgentAccess = document.querySelector("#create-agent-access");
+function updateCreateAgentAccess() {
+  const role = userCreateForm.elements.role.value;
+  createAgentAccess.hidden = role === "admin";
+  document.querySelector("#create-agent-access-title").textContent = role === "operator"
+    ? "Agentes que podrá gestionar"
+    : "Agentes que podrá observar";
+  document.querySelector("#create-agent-access-description").textContent = role === "operator"
+    ? "El operador podrá consultar y enviar órdenes a los agentes seleccionados."
+    : "El observador podrá consultar únicamente los agentes seleccionados.";
+}
+
+function renderCreateAgentOptions() {
+  const options = document.querySelector("#create-agent-options");
+  options.innerHTML = managementAgents.length
+    ? managementAgents.map(agent => `<label class="create-agent-option"><input type="checkbox" name="agent_ids" value="${escapeHtml(agent.agent_id)}"><span><strong>${escapeHtml(agent.hostname)}</strong><small>${escapeHtml(agent.platform || "Agente")}${agent.version ? ` · v${escapeHtml(agent.version)}` : ""}</small></span></label>`).join("")
+    : '<span class="create-agent-empty">No hay agentes registrados todavía.</span>';
+  updateCreateAgentAccess();
+}
+
+userCreateForm.elements.role.addEventListener("change", updateCreateAgentAccess);
+updateCreateAgentAccess();
 const userPasswordInput = userCreateForm.elements.password;
 const userPasswordFeedback = document.querySelector("#user-password-feedback");
 function passwordIsSecure(password) {
@@ -411,8 +434,11 @@ userCreateForm.addEventListener("submit", async event => {
   if (!form.reportValidity()) return;
   const data = new FormData(form);
   try {
-    await api("/api/v1/users", { method: "POST", body: JSON.stringify({ username: data.get("username"), password: data.get("password"), role: data.get("role") }) });
+    const role = data.get("role");
+    const agentIds = role === "admin" ? [] : [...document.querySelectorAll("#create-agent-options input:checked")].map(input => input.value);
+    await api("/api/v1/users", { method: "POST", body: JSON.stringify({ username: data.get("username"), password: data.get("password"), role, agent_ids: agentIds }) });
     form.reset();
+    updateCreateAgentAccess();
     notify("Usuario creado.");
     await loadUsers();
   } catch (error) { notify(error.message, "error"); }

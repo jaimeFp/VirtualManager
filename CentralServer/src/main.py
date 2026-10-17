@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, inspect, select, text
 from sqlalchemy.orm import Session
 
@@ -135,6 +135,7 @@ class UserCreation(BaseModel):
     username: str
     password: str
     role: str
+    agent_ids: list[str] = Field(default_factory=list)
 
 
 class UserUpdate(BaseModel):
@@ -403,6 +404,13 @@ def create_user(request: UserCreation, database: Session = Depends(get_database)
         raise HTTPException(status_code=422, detail="The initial password must have at least 12 characters and include uppercase and lowercase letters, a number and a symbol.")
     if request.role not in {"admin", "operator", "observer"}:
         raise HTTPException(status_code=422, detail="Role must be admin, operator or observer.")
+    requested_agent_ids = list(dict.fromkeys(request.agent_ids))
+    if request.role != "admin" and requested_agent_ids:
+        known_agent_ids = set(database.scalars(
+            select(models.Agent.id).where(models.Agent.id.in_(requested_agent_ids))
+        ).all())
+        if known_agent_ids != set(requested_agent_ids):
+            raise HTTPException(status_code=422, detail="One or more selected agents do not exist.")
     if database.scalar(select(models.WebUser.id).where(models.WebUser.username == username)):
         raise HTTPException(status_code=409, detail="That username already exists.")
     user = models.WebUser(
@@ -412,6 +420,12 @@ def create_user(request: UserCreation, database: Session = Depends(get_database)
         is_active=True,
     )
     database.add(user)
+    database.flush()
+    if request.role != "admin":
+        database.add_all([
+            models.WebUserAgentAccess(user_id=user.id, agent_id=agent_id)
+            for agent_id in requested_agent_ids
+        ])
     database.commit()
     database.refresh(user)
     return user_as_dict(user, database)
