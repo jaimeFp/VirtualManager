@@ -20,3 +20,7 @@
 # Login uses a dedicated opaque gradient backdrop instead of blurring the dashboard.
 .modal#login-dialog::backdrop{background:linear-gradient(135deg,#111d2d 0%,#29394f 56%,#514779 100%);backdrop-filter:none}
 .user-form .password-feedback{display:none}.user-form .password-feedback.is-visible{display:block;color:#b94e48;line-height:1.5}.user-management td select[data-user-active]{min-width:165px}
+/* The login backdrop is solid white, keeping the dashboard completely out of view. */
+#login-dialog::backdrop{background:#fff!important;backdrop-filter:none!important;opacity:1!important}
+.brand-mark{background:transparent;box-shadow:none;overflow:visible}.brand-mark img{display:block;width:100%;height:100%;object-fit:contain}
+.login-logo{width:66px;height:66px;padding:0;margin:-4px 0 5px;background:transparent!important;box-shadow:none!important}.login-logo img{display:block;width:100%;height:100%;object-fit:contain}
