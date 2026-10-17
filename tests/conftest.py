@@ -20,6 +20,7 @@ os.environ["VIRTUALMANAGER_WEB_PASSWORD"] = "TestPassword123!"
 
 from src import main, models  # noqa: E402
 from src.database import SessionLocal  # noqa: E402
+from src.migrations import upgrade_database  # noqa: E402
 from tests.helpers import TEST_PASSWORD  # noqa: E402
 
 
@@ -28,6 +29,7 @@ TEST_PASSWORD_HASH = main.hash_password(TEST_PASSWORD)
 
 @pytest.fixture(autouse=True)
 def clean_database():
+    upgrade_database()
     with main.engine.begin() as connection:
         for table in reversed(main.Base.metadata.sorted_tables):
             connection.execute(table.delete())

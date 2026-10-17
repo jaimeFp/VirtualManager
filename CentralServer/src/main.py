@@ -5,6 +5,7 @@ import re
 import secrets
 import time
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
 
@@ -12,38 +13,15 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Res
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, inspect, select, text
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .database import Base, engine, get_database
 from . import models
+from .migrations import upgrade_database
 
 
-# Create missing tables for a fresh development installation. Existing schemas
-# should be upgraded with a migration when Alembic is introduced.
-Base.metadata.create_all(bind=engine)
-
-# Add role columns to databases created before role management was introduced.
-with engine.begin() as connection:
-    user_columns = {column["name"] for column in inspect(connection).get_columns("web_users")}
-    if "role" not in user_columns:
-        connection.execute(text("ALTER TABLE web_users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'observer'"))
-    if "is_active" not in user_columns:
-        connection.execute(text("ALTER TABLE web_users ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE"))
-    vm_columns = {column["name"] for column in inspect(connection).get_columns("virtual_machines")}
-    if "memory_mb" not in vm_columns:
-        connection.execute(text("ALTER TABLE virtual_machines ADD COLUMN memory_mb INTEGER"))
-    if "cpu_count" not in vm_columns:
-        connection.execute(text("ALTER TABLE virtual_machines ADD COLUMN cpu_count INTEGER"))
-    if "network_adapters" not in vm_columns:
-        connection.execute(text("ALTER TABLE virtual_machines ADD COLUMN network_adapters TEXT"))
-    command_columns = {column["name"] for column in inspect(connection).get_columns("commands")}
-    if "payload" not in command_columns:
-        connection.execute(text("ALTER TABLE commands ADD COLUMN payload TEXT"))
-
-app = FastAPI(title="VirtualManager Central Server", version="0.1.0")
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend")
-app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIR, "assets")), name="assets")
 ENROLLMENT_TOKEN = os.environ.get("VIRTUALMANAGER_ENROLLMENT_TOKEN")
 WEB_USERNAME = os.environ.get("VIRTUALMANAGER_WEB_USERNAME", "").strip().lower()
 WEB_PASSWORD = os.environ.get("VIRTUALMANAGER_WEB_PASSWORD", "")
@@ -91,28 +69,41 @@ def password_is_secure(password: str) -> bool:
 
 DUMMY_PASSWORD_HASH = hash_password("constant-time-placeholder", b"virtualmanagerdummy")
 
-with Session(engine) as bootstrap_database:
-    if bootstrap_database.scalar(select(models.WebUser.id).limit(1)) is None:
-        bootstrap_database.add(models.WebUser(
-            username=WEB_USERNAME,
-            password_hash=hash_password(WEB_PASSWORD),
-            role="admin",
-            is_active=True,
-        ))
-        bootstrap_database.commit()
-    elif bootstrap_database.scalar(
-        select(models.WebUser.id).where(
-            models.WebUser.role == "admin",
-            models.WebUser.is_active.is_(True),
-        ).limit(1)
-    ) is None:
-        bootstrap_user = bootstrap_database.scalar(
-            select(models.WebUser).where(models.WebUser.username == WEB_USERNAME)
-        )
-        if bootstrap_user is not None:
-            bootstrap_user.role = "admin"
-            bootstrap_user.is_active = True
-            bootstrap_database.commit()
+
+def bootstrap_admin() -> None:
+    with Session(engine) as database:
+        if database.scalar(select(models.WebUser.id).limit(1)) is None:
+            database.add(models.WebUser(
+                username=WEB_USERNAME,
+                password_hash=hash_password(WEB_PASSWORD),
+                role="admin",
+                is_active=True,
+            ))
+            database.commit()
+        elif database.scalar(
+            select(models.WebUser.id).where(
+                models.WebUser.role == "admin",
+                models.WebUser.is_active.is_(True),
+            ).limit(1)
+        ) is None:
+            bootstrap_user = database.scalar(
+                select(models.WebUser).where(models.WebUser.username == WEB_USERNAME)
+            )
+            if bootstrap_user is not None:
+                bootstrap_user.role = "admin"
+                bootstrap_user.is_active = True
+                database.commit()
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    upgrade_database()
+    bootstrap_admin()
+    yield
+
+
+app = FastAPI(title="VirtualManager Central Server", version="0.1.0", lifespan=lifespan)
+app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIR, "assets")), name="assets")
 
 
 class AgentRegistration(BaseModel):
