@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="icon" type="image/svg+xml" href="/assets/virtualmanager-logo.svg">
+  <link rel="icon" type="image/png" href="/assets/virtualmanager-logo.png">
   <link rel="stylesheet" href="/assets/styles.css">
   <script src="/assets/app.js" defer></script>
 </head>
@@ -16,7 +16,7 @@
   <div class="shell">
     <aside class="sidebar">
       <a class="brand" href="#inicio" aria-label="VirtualManager inicio">
-        <span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 9.5 16 4l11 5.5v13L16 28 5 22.5z"/><path d="m5.5 9.7 10.5 5.5 10.5-5.5M16 15.2V27"/></svg></span>
+        <span class="brand-mark"><img src="/assets/virtualmanager-logo.png" alt=""></span>
         <span class="brand-name">VirtualManager</span>
       </a>
       <div class="workspace-label">ÁREA DE TRABAJO</div>
@@ -109,7 +109,7 @@
 
   <div class="toast-region" id="toast-region" aria-live="polite"></div>
   <dialog class="modal" id="login-dialog">
-    <div class="login-brand"><span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 9.5 16 4l11 5.5v13L16 28 5 22.5z"/><path d="m5.5 9.7 10.5 5.5 10.5-5.5M16 15.2V27"/></svg></span><span class="brand-name">VirtualManager</span></div><div class="section-kicker">ACCESO SEGURO</div><h2>Iniciar sesión</h2><p>Introduce tus credenciales para acceder al centro de control.</p>
+    <div class="login-brand"><span class="brand-mark"><img src="/assets/virtualmanager-logo.png" alt=""></span><span class="brand-name">VirtualManager</span></div><div class="section-kicker">ACCESO SEGURO</div><h2>Iniciar sesión</h2><p>Introduce tus credenciales para acceder al centro de control.</p>
     <form id="login-form"><label for="username-input">Usuario</label><input id="username-input" name="username" type="text" autocomplete="username" required><label for="password-input" class="login-password-label">Contraseña</label><input id="password-input" name="password" type="password" autocomplete="current-password" required><p class="login-error" id="login-error" role="alert"></p><div class="modal-actions"><button class="button-primary" type="submit">Entrar <span>→</span></button></div></form>
     <div class="privacy-note"><span>▣</span> La sesión se cerrará automáticamente tras 8 horas.</div>
   </dialog>
