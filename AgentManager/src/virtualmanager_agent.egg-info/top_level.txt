@@ -1,1 +1,0 @@
-virtualmanager_agent
